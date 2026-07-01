@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             SendMessagePrototypeTheme {
                 SendMessagePrototypeApp()
+                // testing
             }
         }
     }
