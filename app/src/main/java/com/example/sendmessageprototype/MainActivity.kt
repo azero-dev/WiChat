@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,6 +49,8 @@ import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
 import com.example.sendmessageprototype.ui.theme.SendMessagePrototypeTheme
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.ui.platform.LocalDensity
 
 class MainActivity : ComponentActivity() {
     private val manager: WifiP2pManager? by lazy(LazyThreadSafetyMode.NONE) {
@@ -64,14 +67,14 @@ class MainActivity : ComponentActivity() {
         addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
     }
 
-    // Request permissions from user
+//     Request permissions from user
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
-            Toast.makeText(this, "permissions granted", Toast.LENGTH_SHORT).show()
-            // Iniciar la busqueda automaticamente al recibir permisos
+//            Toast.makeText(this, "permissions granted", Toast.LENGTH_SHORT).show()
+//             Iniciar la busqueda automaticamente al recibir permisos
             discoverPeers()
         } else {
             Toast.makeText(this, "permission are needed to search for peers", Toast.LENGTH_SHORT)
@@ -102,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Starting the BroadcastReceiver
+//         Starting the BroadcastReceiver
         receiver?.also { receiver ->
             registerReceiver(receiver, intentFilter)
         }
@@ -115,7 +118,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES])
+    @RequiresPermission(anyOf = [
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    ])
     private fun discoverPeers() {
         manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
@@ -161,11 +167,16 @@ fun SendMessagePrototypeApp(
     viewModel: WifiP2pViewModel,
     onDiscoverPeers: () -> Unit = {}
 ) {
+//    Menu navegation detection
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
+//    Peers
     val peers by viewModel.peers.collectAsState()
     val selectedPeer = viewModel.selectedPeer
+//    UI: detect keyboard
+    val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     NavigationSuiteScaffold(
+        layoutType = if (isKeyboardOpen) NavigationSuiteType.None else NavigationSuiteType.NavigationBar,
         navigationSuiteItems = {
             AppDestinations.entries.forEach {
                 item(
@@ -183,8 +194,9 @@ fun SendMessagePrototypeApp(
         }
     ) {
         Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            contentWindowInsets = WindowInsets(0, 0, 0, 0)
+            modifier = Modifier
+                .fillMaxSize(),
+//            contentWindowInsets = WindowInsets(0, 8.dp, 0, 0)
         ) { innerPadding ->
             when (currentDestination) {
                 AppDestinations.HOME -> {

@@ -16,8 +16,10 @@ class WifiP2pBroadcastReceiver(
     private val activity: MainActivity
 ) : BroadcastReceiver() {
 
-    // Anadir estos permisos al manifes? Estos son para el peer discovery
-    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.NEARBY_WIFI_DEVICES])
+    @RequiresPermission(anyOf = [
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    ])
     override fun onReceive(context: Context, intent: Intent) {
         val action: String? = intent.action
         when (action) {
