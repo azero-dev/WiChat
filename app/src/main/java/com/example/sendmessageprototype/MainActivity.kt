@@ -5,6 +5,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.health.connect.datatypes.Device
+import android.net.wifi.WpsInfo
+import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
@@ -74,7 +77,7 @@ class MainActivity : ComponentActivity() {
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
 //            Toast.makeText(this, "permissions granted", Toast.LENGTH_SHORT).show()
-//             Iniciar la busqueda automaticamente al recibir permisos
+//            Iniciar la busqueda automaticamente al recibir permisos
             discoverPeers()
         } else {
             Toast.makeText(this, "permission are needed to search for peers", Toast.LENGTH_SHORT)
@@ -97,7 +100,8 @@ class MainActivity : ComponentActivity() {
             SendMessagePrototypeTheme {
                 SendMessagePrototypeApp(
                     viewModel = viewModel,
-                    onDiscoverPeers = { checkAndRequestPermissions() }
+                    onDiscoverPeers = { checkAndRequestPermissions() },
+                    onConnect = { device -> connectToDevice(device) }
                 )
             }
         }
@@ -159,13 +163,41 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(missingPermissions.toTypedArray())
         }
     }
+
+    @RequiresPermission(anyOf = [
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    ])
+    fun connectToDevice(device: WifiP2pDevice) {
+        val config = WifiP2pConfig().apply {
+            deviceAddress = device.deviceAddress
+            wps.setup = WpsInfo.PBC
+        }
+        manager?.connect(channel, config, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Connected to ${device.deviceName}, ${device.deviceAddress}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            override fun onFailure(reason: Int) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Failed to connect to ${device.deviceName}. Reason: $reason",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+    }
 }
 
 //@PreviewScreenSizes
 @Composable
 fun SendMessagePrototypeApp(
     viewModel: WifiP2pViewModel,
-    onDiscoverPeers: () -> Unit = {}
+    onDiscoverPeers: () -> Unit = {},
+    onConnect: (WifiP2pDevice) -> Unit
 ) {
 //    Menu navegation detection
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -207,7 +239,10 @@ fun SendMessagePrototypeApp(
                             .imePadding(),
                         peers = peers,
                         selectedPeer = selectedPeer,
-                        onPeerClick = { device -> viewModel.selectPeer(device)},
+                        onPeerClick = { device ->
+                            viewModel.selectPeer(device)
+                            onConnect(device)
+                        },
                         onDiscoverPeers = onDiscoverPeers
                     )
                 }

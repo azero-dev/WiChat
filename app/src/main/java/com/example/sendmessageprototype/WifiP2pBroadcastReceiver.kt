@@ -4,10 +4,12 @@ import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.NetworkInfo
 import android.net.wifi.p2p.WifiP2pDeviceList
 import android.net.wifi.p2p.WifiP2pManager
 import android.widget.Toast
 import androidx.annotation.RequiresPermission
+import androidx.core.content.IntentCompat
 
 class WifiP2pBroadcastReceiver(
     private val manager: WifiP2pManager?,
@@ -23,6 +25,7 @@ class WifiP2pBroadcastReceiver(
     override fun onReceive(context: Context, intent: Intent) {
         val action: String? = intent.action
         when (action) {
+//            State changed
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
                 val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
 //                Este when y condicional estan para asegurar que los permisos  estan concedidos
@@ -38,18 +41,17 @@ class WifiP2pBroadcastReceiver(
                         }
                     }
                     WifiP2pManager.WIFI_P2P_STATE_DISABLED -> {
-//                        Toast.makeText(context, "Wifi P2P esta desactivado", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "Wifi P2P is disabled", Toast.LENGTH_LONG).show()
                     }
                 }
             }
 
+//            Peers changed
             WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION -> {
                 manager?.requestPeers(channel) { peers: WifiP2pDeviceList? ->
                     peers?.let {
                         viewModel.updatePeerList(it.deviceList.toList())
-//                        activity.updatePeerList(it.deviceList.toList())
-                        // Muestra los nombres de los dispositivos encontrados
-                        // cambiar esto para que actualice la lista de peers en la UI
+                        // Muestra los nombres de los dispositivos encontrados. Borrar tras debuging
                         val deviceNames = it.deviceList.joinToString(", ") { device -> device.deviceName }
                         val message = if (deviceNames.isNotEmpty()) {
                             "Peers found: $deviceNames"
@@ -58,6 +60,17 @@ class WifiP2pBroadcastReceiver(
                         }
                         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                     }
+                }
+            }
+//            Connection changed
+            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                val networkInfo = IntentCompat.getParcelableExtra(intent, WifiP2pManager.EXTRA_NETWORK_INFO, NetworkInfo::class.java)
+                if (networkInfo?.isConnected == true) {
+                    manager?.requestConnectionInfo(channel) { info ->
+                        viewModel.updateConnectionInfo(info)
+                    }
+                } else {
+                    viewModel.updateConnectionInfo(null)
                 }
             }
         }
