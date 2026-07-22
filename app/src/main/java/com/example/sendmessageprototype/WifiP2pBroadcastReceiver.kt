@@ -62,17 +62,17 @@ class WifiP2pBroadcastReceiver(
                     }
                 }
             }
-//            Connection changed
-            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                val networkInfo = IntentCompat.getParcelableExtra(intent, WifiP2pManager.EXTRA_NETWORK_INFO, NetworkInfo::class.java)
-                if (networkInfo?.isConnected == true) {
-                    manager?.requestConnectionInfo(channel) { info ->
-                        viewModel.updateConnectionInfo(info)
-                    }
-                } else {
-                    viewModel.updateConnectionInfo(null)
-                }
-            }
+//            Connection changed: NOW controlled in MainActivity. Delete after checking all work.
+//            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+//                val networkInfo = IntentCompat.getParcelableExtra(intent, WifiP2pManager.EXTRA_NETWORK_INFO, NetworkInfo::class.java)
+//                if (networkInfo?.isConnected == true) {
+//                    manager?.requestConnectionInfo(channel) { info ->
+//                        viewModel.updateConnectionInfo(info)
+//                    }
+//                } else {
+//                    viewModel.updateConnectionInfo(null)
+//                }
+//            }
         }
     }
 }

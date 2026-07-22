@@ -5,7 +5,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.health.connect.datatypes.Device
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pDevice
@@ -66,7 +69,7 @@ class MainActivity : ComponentActivity() {
     private val intentFilter = IntentFilter().apply {
         addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
         addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+//        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
     }
 
@@ -82,6 +85,23 @@ class MainActivity : ComponentActivity() {
         } else {
             Toast.makeText(this, "permission are needed to search for peers", Toast.LENGTH_SHORT)
                 .show()
+        }
+    }
+
+//    ConnectivityManager
+    private val connectivityManager: ConnectivityManager by lazy {
+        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            super.onAvailable(network)
+            manager?.requestConnectionInfo(channel) { info ->
+                viewModel.updateConnectionInfo(info)
+            }
+        }
+        override fun onLost(network: Network) {
+            super.onLost(network)
+            viewModel.updateConnectionInfo(null)
         }
     }
 
@@ -110,16 +130,18 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
 //         Starting the BroadcastReceiver
-        receiver?.also { receiver ->
-            registerReceiver(receiver, intentFilter)
-        }
+        receiver?.also { registerReceiver(it, intentFilter) }
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_WIFI_P2P)
+            .build()
+        connectivityManager.registerNetworkCallback(request, networkCallback)
     }
 
     override fun onPause() {
         super.onPause()
-        receiver?.also { receiver ->
-            unregisterReceiver(receiver)
-        }
+        receiver?.also { unregisterReceiver(it) }
+        connectivityManager.unregisterNetworkCallback(networkCallback)
     }
 
     @RequiresPermission(anyOf = [
