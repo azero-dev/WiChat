@@ -20,6 +20,9 @@ class WifiP2pViewModel : ViewModel() {
 //    Connection info
     private val _connectionInfo = MutableStateFlow<WifiP2pInfo?>(null)
     val connectionInfo: StateFlow<WifiP2pInfo?> = _connectionInfo.asStateFlow()
+//    data transfer
+    private val _messages = MutableStateFlow<List<Message>>(emptyList())
+    val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
 //    Peer managing
     fun updatePeerList(newList: List<WifiP2pDevice>) {
@@ -32,5 +35,10 @@ class WifiP2pViewModel : ViewModel() {
 //    Connection managing
     fun updateConnectionInfo(info: WifiP2pInfo?) {
         _connectionInfo.value = info
+    }
+
+//    Data transfer manager
+    fun addMessage(message: Message) {
+        _messages.value += message
     }
 }

@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.example.sendmessageprototype.ui.theme.SendMessagePrototypeTheme
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.ui.modifier.modifierLocalConsumer
 import androidx.compose.ui.platform.LocalDensity
 
 class MainActivity : ComponentActivity() {
@@ -69,10 +70,9 @@ class MainActivity : ComponentActivity() {
     private val intentFilter = IntentFilter().apply {
         addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
         addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-//        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
         addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
     }
-
 //     Request permissions from user
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -87,41 +87,49 @@ class MainActivity : ComponentActivity() {
                 .show()
         }
     }
-
 //    ConnectivityManager
-    private val connectivityManager: ConnectivityManager by lazy {
-        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    }
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            super.onAvailable(network)
-            manager?.requestConnectionInfo(channel) { info ->
-                viewModel.updateConnectionInfo(info)
-            }
-        }
-        override fun onLost(network: Network) {
-            super.onLost(network)
-            viewModel.updateConnectionInfo(null)
-        }
-    }
+//    private val connectivityManager: ConnectivityManager by lazy {
+//        getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+//    }
+//    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+//        override fun onAvailable(network: Network) {
+//            super.onAvailable(network)
+//            manager?.requestConnectionInfo(channel) { info ->
+//                viewModel.updateConnectionInfo(info)
+//                if (info.groupFormed) {
+//                    if (info.isGroupOwner) {
+//                        chatManager.startServer()
+//                    } else {
+//                        chatManager.startClient(info.groupOwnerAddress.hostAddress)
+//                    }
+//                }
+//            }
+//        }
+//        override fun onLost(network: Network) {
+//            super.onLost(network)
+//            viewModel.updateConnectionInfo(null)
+//        }
+//    }
+//    Chat manager
+    private lateinit var chatManager: WifiP2pChatManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        chatManager = WifiP2pChatManager(viewModel)
         // initiate channel and receiver
         channel = manager?.initialize(this, mainLooper, null)
         channel?.also { channel ->
-            receiver = WifiP2pBroadcastReceiver(manager, channel, viewModel, this)
+            receiver = WifiP2pBroadcastReceiver(manager, channel, viewModel, this, chatManager)
         }
         checkAndRequestPermissions()
-        // Dejar registerReceiver aqui ademas del de onResume?
-        // registerReceiver(receiver, intentFilter)
         enableEdgeToEdge()
         setContent {
             SendMessagePrototypeTheme {
                 SendMessagePrototypeApp(
                     viewModel = viewModel,
                     onDiscoverPeers = { checkAndRequestPermissions() },
-                    onConnect = { device -> connectToDevice(device) }
+                    onConnect = { device -> connectToDevice(device) },
+                    onSendMessage = { chatManager.sendMessage("Test") }
                 )
             }
         }
@@ -131,17 +139,17 @@ class MainActivity : ComponentActivity() {
         super.onResume()
 //         Starting the BroadcastReceiver
         receiver?.also { registerReceiver(it, intentFilter) }
-        val request = NetworkRequest.Builder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_WIFI_P2P)
-            .build()
-        connectivityManager.registerNetworkCallback(request, networkCallback)
+//        val request = NetworkRequest.Builder()
+//            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+//            .addCapability(NetworkCapabilities.NET_CAPABILITY_WIFI_P2P)
+//            .build()
+//        connectivityManager.registerNetworkCallback(request, networkCallback)
     }
 
     override fun onPause() {
         super.onPause()
         receiver?.also { unregisterReceiver(it) }
-        connectivityManager.unregisterNetworkCallback(networkCallback)
+//        connectivityManager.unregisterNetworkCallback(networkCallback)
     }
 
     @RequiresPermission(anyOf = [
@@ -219,7 +227,8 @@ class MainActivity : ComponentActivity() {
 fun SendMessagePrototypeApp(
     viewModel: WifiP2pViewModel,
     onDiscoverPeers: () -> Unit = {},
-    onConnect: (WifiP2pDevice) -> Unit
+    onConnect: (WifiP2pDevice) -> Unit,
+    onSendMessage: () -> Unit,
 ) {
 //    Menu navegation detection
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -228,6 +237,8 @@ fun SendMessagePrototypeApp(
     val selectedPeer = viewModel.selectedPeer
 //    UI: detect keyboard
     val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+//    Send data
+    val messages by viewModel.messages.collectAsState()
 
     NavigationSuiteScaffold(
         layoutType = if (isKeyboardOpen) NavigationSuiteType.None else NavigationSuiteType.NavigationBar,
@@ -265,7 +276,9 @@ fun SendMessagePrototypeApp(
                             viewModel.selectPeer(device)
                             onConnect(device)
                         },
-                        onDiscoverPeers = onDiscoverPeers
+                        onDiscoverPeers = onDiscoverPeers,
+                        messages = messages,
+                        onSendMessage = onSendMessage
                     )
                 }
 
@@ -297,7 +310,9 @@ fun Greeting(
     peers: List<WifiP2pDevice>,
     selectedPeer: WifiP2pDevice?,
     onPeerClick: (WifiP2pDevice) -> Unit,
-    onDiscoverPeers: () -> Unit = {}
+    onDiscoverPeers: () -> Unit = {},
+    messages: List<Message>,
+    onSendMessage: () -> Unit,
 ) {
     var messageText by rememberSaveable { mutableStateOf("") }
 
@@ -367,11 +382,24 @@ fun Greeting(
                     .weight(1f)
                     .padding(vertical = 8.dp)
             ) {
-                Text(
-                    text = "Select user to start chating",
-                    modifier = Modifier.align(Alignment.Center),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+//                Text(
+//                    text = "Select user to start chating",
+//                    modifier = Modifier.align(Alignment.Center),
+//                    style = MaterialTheme.typography.bodyMedium
+//                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+//                        .weight(1f)
+                ) {
+                    items(messages) { message ->
+                        Text(
+                            text = "${if (message.isMine) "Me: " else "Peer: "}${message.content}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                    }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -385,7 +413,7 @@ fun Greeting(
                 )
                 Button(
                     onClick = {
-//                        TODO: Send message to selected peer
+                        onSendMessage()
                         messageText = ""
                     },
                     modifier = Modifier.padding(start = 8.dp)
@@ -404,7 +432,10 @@ fun GreetingPreview() {
         Greeting(
             peers = emptyList(),
             selectedPeer = null,
-            onPeerClick = {}
+            onPeerClick = {},
+            onDiscoverPeers = {},
+            messages = emptyList(),
+            onSendMessage = {}
         )
     }
 }

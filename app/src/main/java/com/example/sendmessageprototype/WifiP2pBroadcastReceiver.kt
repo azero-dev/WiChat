@@ -15,7 +15,8 @@ class WifiP2pBroadcastReceiver(
     private val manager: WifiP2pManager?,
     private val channel: WifiP2pManager.Channel?,
     private val viewModel: WifiP2pViewModel,
-    private val activity: MainActivity
+    private val activity: MainActivity,
+    private val chatManager: WifiP2pChatManager,
 ) : BroadcastReceiver() {
 
     @RequiresPermission(anyOf = [
@@ -28,12 +29,9 @@ class WifiP2pBroadcastReceiver(
 //            State changed
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> {
                 val state = intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, -1)
-//                Este when y condicional estan para asegurar que los permisos  estan concedidos
                 when (state) {
                     WifiP2pManager.WIFI_P2P_STATE_ENABLED -> {
 //                        Toast.makeText(context, "Wifi P2P esta activado", Toast.LENGTH_LONG).show()
-//                        Actualiza el viewModel con la lista de peers
-//                        Deberia filtrar aqui los devices que no son WiChat? (NO, mejor en otro componente que se encargue de ello)
                         manager?.requestPeers(channel) { peerList ->
                             peerList?.deviceList?.let { devices ->
                                 viewModel.updatePeerList(devices.toList())
@@ -62,17 +60,32 @@ class WifiP2pBroadcastReceiver(
                     }
                 }
             }
-//            Connection changed: NOW controlled in MainActivity. Delete after checking all work.
-//            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-//                val networkInfo = IntentCompat.getParcelableExtra(intent, WifiP2pManager.EXTRA_NETWORK_INFO, NetworkInfo::class.java)
-//                if (networkInfo?.isConnected == true) {
-//                    manager?.requestConnectionInfo(channel) { info ->
-//                        viewModel.updateConnectionInfo(info)
-//                    }
-//                } else {
-//                    viewModel.updateConnectionInfo(null)
-//                }
-//            }
+
+//            Transfer data
+            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                val networkInfo = IntentCompat.getParcelableExtra(
+                    intent,
+                    WifiP2pManager.EXTRA_NETWORK_INFO,
+                    NetworkInfo::class.java
+                )
+                if (networkInfo?.isConnected == true) {
+                    manager?.requestConnectionInfo(channel) { info ->
+                        viewModel.updateConnectionInfo(info)
+                        if (info?.groupFormed == true) {
+                            if (info.isGroupOwner) {
+                                chatManager.startServer()
+                            } else {
+                                info.groupOwnerAddress?.hostAddress?.let { ip ->
+                                    chatManager.startClient(ip)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    viewModel.updateConnectionInfo(null)
+                    chatManager.close()
+                }
+            }
         }
     }
 }
