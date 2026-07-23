@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     onDiscoverPeers = { checkAndRequestPermissions() },
                     onConnect = { device -> connectToDevice(device) },
-                    onSendMessage = { chatManager.sendMessage("Test") }
+                    onSendMessage = { text -> chatManager.sendMessage(text) }
                 )
             }
         }
@@ -207,7 +207,7 @@ class MainActivity : ComponentActivity() {
             override fun onSuccess() {
                 Toast.makeText(
                     this@MainActivity,
-                    "Connected to ${device.deviceName}, ${device.deviceAddress}",
+                    "Starting connection to ${device.deviceName}, ${device.deviceAddress}",
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -228,7 +228,7 @@ fun SendMessagePrototypeApp(
     viewModel: WifiP2pViewModel,
     onDiscoverPeers: () -> Unit = {},
     onConnect: (WifiP2pDevice) -> Unit,
-    onSendMessage: () -> Unit,
+    onSendMessage: (String) -> Unit,
 ) {
 //    Menu navegation detection
     var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
@@ -312,7 +312,7 @@ fun Greeting(
     onPeerClick: (WifiP2pDevice) -> Unit,
     onDiscoverPeers: () -> Unit = {},
     messages: List<Message>,
-    onSendMessage: () -> Unit,
+    onSendMessage: (String) -> Unit,
 ) {
     var messageText by rememberSaveable { mutableStateOf("") }
 
@@ -413,8 +413,10 @@ fun Greeting(
                 )
                 Button(
                     onClick = {
-                        onSendMessage()
-                        messageText = ""
+                        if (messageText.isNotEmpty()) {
+                            onSendMessage(messageText)
+                            messageText = ""
+                        }
                     },
                     modifier = Modifier.padding(start = 8.dp)
                 ) {

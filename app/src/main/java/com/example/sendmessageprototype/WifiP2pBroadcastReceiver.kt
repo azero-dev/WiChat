@@ -74,6 +74,8 @@ class WifiP2pBroadcastReceiver(
                         if (info?.groupFormed == true) {
                             if (info.isGroupOwner) {
                                 chatManager.startServer()
+                            } else if (info.groupOwnerAddress != null) {
+                                chatManager.startClient(info.groupOwnerAddress.hostAddress)
                             } else {
                                 info.groupOwnerAddress?.hostAddress?.let { ip ->
                                     chatManager.startClient(ip)

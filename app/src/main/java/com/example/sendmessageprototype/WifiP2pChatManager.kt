@@ -1,5 +1,6 @@
 package com.example.sendmessageprototype
 
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -17,18 +18,24 @@ class WifiP2pChatManager(private val viewModel: WifiP2pViewModel) {
     private val PORT = 8880
 
     fun startServer() {
+        if (serverSocket != null && !serverSocket!!.isClosed) return
+
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 serverSocket = ServerSocket(PORT)
                 socket = serverSocket?.accept()
+                viewModel.addMessage(Message(content = "Connected to client", isMine = true))
                 startListening()
             } catch (e: Exception) {
                 e.printStackTrace()
+                close()
             }
         }
     }
 
     fun startClient(hostAddress: String) {
+        if (socket != null && socket!!.isConnected) return
+
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 var connected = false
@@ -36,6 +43,7 @@ class WifiP2pChatManager(private val viewModel: WifiP2pViewModel) {
                     try {
                         socket = Socket(hostAddress, PORT)
                         connected = true
+                        viewModel.addMessage(Message(content = "Connected to server", isMine = false))
                     } catch (e: Exception) {
                         Thread.sleep(1000)
                     }
