@@ -32,7 +32,7 @@ class Handshaker(
             content = Json.encodeToString(identity).toByteArray(),
         )
         val envelope = MessageInTransit(
-            messageID = message.getMessageID(),
+            messageID = message.messageID,
             payload = message,
             ttl = 1,
         )

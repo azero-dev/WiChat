@@ -115,8 +115,8 @@ class ChatSession(
                 handshaker?.sendIdentity()
                 peersManager?.userIDOf(event.deviceAddress)?.let { userID ->
                     peersManager?.addReachablePeer(userID)
+                    _connectingAddress.value = null
                 }
-                _connectingAddress.value = null
             }
             is TransportEvent.PeerDisconnected -> {
                 peersManager?.userIDOf(event.deviceAddress)?.let {
@@ -128,14 +128,16 @@ class ChatSession(
             }
             is TransportEvent.EnvelopeReceived -> {
                 val fromDevice = event.fromDevice
-                val userID = peersManager?.userIDOf(fromDevice)
-                if(event.envelope.getPayload().getType() == MessageType.IDENTITY) {
+                if(event.envelope.payload.type == MessageType.IDENTITY) {
                     handshaker?.handleIncomingIdentity(
-                        event.envelope.getPayload().getContent(),
+                        event.envelope.payload.content,
                         fromDevice,
                     )
-                } else if (userID != null) {
-                    incoming?.handleIncoming(event.envelope, userID)
+                    scope.launch { handshaker?.sendIdentity() }
+                } else {
+                    peersManager?.userIDOf(fromDevice)?.let { userID ->
+                        incoming?.handleIncoming(event.envelope, userID)
+                    }
                 }
             }
         }
@@ -146,11 +148,15 @@ class ChatSession(
     fun connectToDevice(deviceAddress: String) {
         activeUserConnection = true
         _connectingAddress.value = deviceAddress
-        transport.connect(deviceAddress)
+        transport.connect(deviceAddress, onFailure = {
+            _connectingAddress.value = null
+            activeUserConnection = false
+        })
     }
 
     private fun onPeerIdentified(user: User) {
         peersManager?.addReachablePeer(user.userID)
+        _connectingAddress.value = null
         scope.launch {
             val isPersistent = transport.isCurrentConnectionPersistent()
             peersManager?.updateIsPersistent(user.userID, isPersistent)

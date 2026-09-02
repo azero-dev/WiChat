@@ -25,16 +25,6 @@ class Message(
         }
     }
 
-//    getters
-    fun getMessageID(): String = messageID
-    fun getType(): MessageType = type
-    fun getConversationID(): String = conversationID
-    fun getSenderID(): String = senderID
-    fun getReceiverID(): String = receiverID
-    fun getTimestamp(): Long = timestamp
-    fun getContent(): ByteArray = content
-    fun getState(): MessageState = state
-
 //    overrides
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

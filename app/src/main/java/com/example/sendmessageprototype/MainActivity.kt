@@ -167,6 +167,22 @@ fun AppNavigation(
 ) {
     val navController = rememberNavController()
     val sessionState by session.state.collectAsState()
+    val savedPeers by session.getSavedPeers().collectAsState()
+    LaunchedEffect(savedPeers) {
+        val connectingAddress = session.connectingAddress.value
+        if (connectingAddress != null) {
+            val identifiedUser = savedPeers.find { it.lastKnownDeviceAddress == connectingAddress }
+            identifiedUser?.let { user ->
+                val convID = if (session.state.value is ChatSession.SessionState.Ready) {
+                    val localID = (session.state.value as ChatSession.SessionState.Ready).localUser.userID
+                    if (localID < user.userID) "${localID}_${user.userID}" else "${user.userID}_${localID}"
+                } else ""
+                if (convID.isNotEmpty()) {
+                    navController.navigate("chat/$convID")
+                }
+            }
+        }
+    }
     LaunchedEffect(sessionState) {
         when (sessionState) {
             is ChatSession.SessionState.IdentityRequired -> {
@@ -230,6 +246,7 @@ fun MainScreen(
     val conversations by session.getConversationMetas().collectAsState(initial = emptyList())
     val savedPeers by session.getSavedPeers().collectAsState()
     var showDiscovery by remember { mutableStateOf(false) }
+    val connectingAddress by session.connectingAddress.collectAsState()
 
     Scaffold(
         topBar = {
@@ -241,25 +258,42 @@ fun MainScreen(
             }
         }
     ) { padding ->
-        if (conversations.isEmpty()) {
-            Box(Modifier
-                .fillMaxSize()
-                .padding(padding),
-                contentAlignment = Alignment.Center) {
-                Text("No conversations yet! Tap on + to start a new one")
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (connectingAddress != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connecting with device...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
-        } else {
-            LazyColumn(modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-            ) {
-                items(conversations) { meta ->
-                    val peer = savedPeers.find { it.userID == meta.peerID }
-                    ConversationCard(
-                        name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
-                        lastTime = meta.lastMessageAt,
-                        onClick = { onConversationClick(meta.conversationID) }
-                    )
+            if (conversations.isEmpty()) {
+                Box(Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                    contentAlignment = Alignment.Center) {
+                    Text("Tap on + to start a new one")
+                }
+            } else {
+                LazyColumn(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                ) {
+                    items(conversations) { meta ->
+                        val peer = savedPeers.find { it.userID == meta.peerID }
+                        ConversationCard(
+                            name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
+                            lastTime = meta.lastMessageAt,
+                            onClick = { onConversationClick(meta.conversationID) }
+                        )
+                    }
                 }
             }
         }
@@ -427,7 +461,7 @@ fun WelcomeScreen(nameEntered: (String) -> Unit) {
         OutlinedTextField(
             value = name,
             onValueChange = { name = it },
-            label = { Text("Your name") },
+            label = { Text("Enter your username") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
         )
@@ -437,7 +471,7 @@ fun WelcomeScreen(nameEntered: (String) -> Unit) {
             enabled = name.isNotBlank(),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Start!")
+            Text("Create")
         }
     }
 }
@@ -461,12 +495,12 @@ fun DiscoveryBottomSheet(
                 .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
         ) {
             Text(
-                "searching nearby devices",
+                "Searching nearby devices",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             if (peers.isEmpty()) {
-                Text("No devices found")
+                Text("No devices found yet")
             } else {
                 LazyColumn { 
                     items(peers) { peer ->

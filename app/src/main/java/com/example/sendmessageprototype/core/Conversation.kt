@@ -3,12 +3,12 @@ package com.example.sendmessageprototype.core
 class Conversation(
     val conversationID: String,
     val peerID: String,
-    private val messages: MutableMap<String, Message> = mutableMapOf(),
+    val messages: MutableMap<String, Message> = mutableMapOf(),
     var lastMessageAt: Long = 0L,
 ) {
     fun addMessage(message: Message) {
-        messages[message.getMessageID()] = message
-        updateLastMessageAt(message.getTimestamp())
+        messages[message.messageID] = message
+        updateLastMessageAt(message.timestamp)
     }
 
     fun removeMessage(messageID: String) {
@@ -23,12 +23,6 @@ class Conversation(
     fun updateMessageState(messageID: String, newState: MessageState) {
         messages[messageID]?.changeState(newState)
     }
-
-//    getters
-    fun getConversationID(): String = conversationID
-    fun getPeerID(): String = peerID
-    fun getMessages(): Map<String, Message> = messages
-    fun getLastMessageAt(): Long = lastMessageAt
 
 //    overrides
     override fun equals(other: Any?): Boolean {

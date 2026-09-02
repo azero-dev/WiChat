@@ -30,12 +30,12 @@ class ConversationsManager(
 
     suspend fun addMessage(message: Message) {
         messageDAO.save(message.toEntity())
-        val peerID = if (message.getSenderID() == localUserID) {
-            message.getReceiverID()
+        val peerID = if (message.senderID == localUserID) {
+            message.receiverID
         } else {
-            message.getSenderID()
+            message.senderID
         }
-        val conv = getOrCreate(message.getConversationID(), peerID)
+        val conv = getOrCreate(message.conversationID, peerID)
         conv.addMessage(message)
         _activeConversations.value = _activeConversations.value.toMap()
     }
@@ -43,7 +43,7 @@ class ConversationsManager(
     suspend fun updateMessageState(messageID: String, conversationID: String, newState: MessageState) {
         _activeConversations.value[conversationID]?.let { conv ->
             conv.updateMessageState(messageID, newState)
-            conv.getMessages()[messageID]?.let { updatedMessage ->
+            conv.messages[messageID]?.let { updatedMessage ->
                 messageDAO.update(updatedMessage.toEntity())
             }
         }

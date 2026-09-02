@@ -22,14 +22,6 @@ class MessageInTransit(
         lastAttemptAt = System.currentTimeMillis()
     }
 
-//    getters
-    fun getMessageID(): String = messageID
-    fun getPayload(): Message = payload
-    fun getTtl(): Int = ttl
-    fun getRetryCounter(): Int = retryCounter
-    fun getLastAttemptAt(): Long = lastAttemptAt
-    fun getAlreadySentTo(): MutableSet<String> = alreadySentTo
-
 //    overrides
     override  fun equals(other: Any?): Boolean {
         if (this === other) return true

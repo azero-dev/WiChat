@@ -46,16 +46,16 @@ class OutboxProcessor(
 
     suspend fun enqueue(message: Message) {
         val envelope = MessageInTransit(
-            messageID = message.getMessageID(),
+            messageID = message.messageID,
             payload = message,
             ttl = 20,
         )
-        messages[message.getMessageID()] = envelope
+        messages[message.messageID] = envelope
         outboxDAO.save(envelope.toEntity())
     }
 
     fun enqueueRelay(envelope: MessageInTransit) {
-        relayMessages[envelope.getMessageID()] = envelope
+        relayMessages[envelope.messageID] = envelope
     }
 
     suspend fun remove(messageID: String): MessageInTransit? {
@@ -75,8 +75,8 @@ class OutboxProcessor(
                 val result = transport.send(envelope)
                 when (result) {
                     is SendResult.Success -> {
-                        envelope.getAlreadySentTo().add(connectedUserID)
-                        if (messages.containsKey(envelope.getMessageID())) {
+                        envelope.alreadySentTo.add(connectedUserID)
+                        if (messages.containsKey(envelope.messageID)) {
                             outboxDAO.update(envelope.toEntity())
                         }
                     }
@@ -88,23 +88,23 @@ class OutboxProcessor(
     }
 
     private fun shouldAttemptSend(envelope: MessageInTransit, connectedUserID: String): Boolean {
-        if (envelope.getAlreadySentTo().contains(connectedUserID)) return false
+        if (envelope.alreadySentTo.contains(connectedUserID)) return false
         val now = System.currentTimeMillis()
-        if (now - envelope.getLastAttemptAt() < 20000) return false
+        if (now - envelope.lastAttemptAt < 20000) return false
         return true
     }
 
     private suspend fun handleSendError(envelope: MessageInTransit) {
         envelope.recordFailedAttempt()
-        if (envelope.getRetryCounter() >= 10) {
-            remove(envelope.getMessageID())
+        if (envelope.retryCounter >= 10) {
+            remove(envelope.messageID)
             conversations.updateMessageState(
-                envelope.getMessageID(),
-                envelope.getPayload().getConversationID(),
+                envelope.messageID,
+                envelope.payload.conversationID,
                 MessageState.FAILED
             )
         } else {
-            if (messages.containsKey(envelope.getMessageID())) {
+            if (messages.containsKey(envelope.messageID)) {
                 outboxDAO.update(envelope.toEntity())
             }
         }

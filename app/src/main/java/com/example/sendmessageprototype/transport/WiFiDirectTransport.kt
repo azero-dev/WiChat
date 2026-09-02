@@ -65,11 +65,17 @@ class WiFiDirectTransport(
         return _discoveredPeers.asStateFlow()
     }
 
-    fun connect(deviceAddress: String) {
+    fun connect(deviceAddress: String, onFailure: (() -> Unit)? = null) {
         val config = WifiP2pConfig().apply {
             this.deviceAddress = deviceAddress
         }
-        manager.connect(channel, config, null)
+        manager.connect(channel, config, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+            }
+            override fun onFailure(reason: Int) {
+                onFailure?.invoke()
+            }
+        })
     }
 
     fun disconnect() {
