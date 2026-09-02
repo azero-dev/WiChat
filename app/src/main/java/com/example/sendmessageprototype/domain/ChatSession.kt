@@ -109,8 +109,8 @@ class ChatSession(
         when (event) {
             is TransportEvent.PeerConnected -> {
                 handshaker?.sendIdentity()
-                peersManager?.userIDOf(event.deviceAddress)?.let {
-                    peersManager?.addReachablePeer(it)
+                peersManager?.userIDOf(event.deviceAddress)?.let { userID ->
+                    peersManager?.addReachablePeer(userID)
                 }
             }
             is TransportEvent.PeerDisconnected -> {
@@ -145,6 +145,8 @@ class ChatSession(
     private fun onPeerIdentified(user: User) {
         peersManager?.addReachablePeer(user.userID)
         scope.launch {
+            val isPersistent = transport.isCurrentConnectionPersistent()
+            peersManager?.updateIsPersistent(user.userID, isPersistent)
             outbox?.trySend()
         }
     }
@@ -168,10 +170,9 @@ class ChatSession(
 
     private suspend fun performDiscoveryTick() {
         val discoveredList = transport.discoverPeers().firstOrNull() ?: return
-        val persistentGroup = transport.persistentGroupAddresses()
         for (discovered in discoveredList) {
             val savedUser = peersManager?.savedByAddress(discovered.deviceAddress)
-            if (savedUser != null && persistentGroup.contains(discovered.deviceAddress)) {
+            if (savedUser != null && savedUser.isPersistent) {
                 transport.connect(discovered.deviceAddress)
                 break
             }
@@ -199,6 +200,6 @@ class ChatSession(
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
 
-    private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress)
-    private fun User.toEntity(isLocal: Boolean) = UserEntity(userID, userName, createdAt, lastKnownDeviceAddress, isLocal)
+    private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress, isPersistent)
+    private fun User.toEntity(isLocal: Boolean) = UserEntity(userID, userName, createdAt, lastKnownDeviceAddress, isLocal, isPersistent)
 }

@@ -5,6 +5,7 @@ class User(
     var userName: String,
     val createdAt: Long = System.currentTimeMillis(),
     var lastKnownDeviceAddress: String? = null,
+    var isPersistent: Boolean = false,
 ) {
     fun updateUserName(newName: String) {
         userName = newName
@@ -12,6 +13,10 @@ class User(
 
     fun updateLastKnownDeviceAddress(newAddress: String) {
         lastKnownDeviceAddress = newAddress
+    }
+
+    fun updateIsPersistent(value: Boolean) {
+        isPersistent = value
     }
 
 //    getters

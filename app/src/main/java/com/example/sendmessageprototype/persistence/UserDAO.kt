@@ -25,4 +25,7 @@ interface UserDAO {
 
     @Query("SELECT * FROM users")
     suspend fun getAllUsers(): List<UserEntity>
+
+    @Query("UPDATE users SET isPersistent = :isPersistent WHERE userID = :userId")
+    suspend fun updateIsPersistent(userId: String, isPersistent: Boolean)
 }

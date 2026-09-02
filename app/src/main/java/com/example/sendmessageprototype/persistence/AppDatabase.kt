@@ -17,6 +17,7 @@ data class UserEntity(
     val createdAt: Long,
     val lastKnownDeviceAddress: String?,
     val isLocal: Boolean = false,
+    val isPersistent: Boolean = false,
 )
 
 @Entity(tableName = "messages")

@@ -1,5 +1,8 @@
 package com.example.sendmessageprototype.core
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 class MessageInTransit(
     val messageID: String,
     val payload: Message,

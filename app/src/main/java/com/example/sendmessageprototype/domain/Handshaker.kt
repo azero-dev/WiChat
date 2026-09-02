@@ -28,7 +28,7 @@ class Handshaker(
             type = MessageType.IDENTITY,
             conversationID = "SYSTEM",
             senderID = localUser.userID,
-            receiverID = "PEER",
+            receiverID = "BROADCAST",
             content = Json.encodeToString(identity).toByteArray(),
         )
         val envelope = MessageInTransit(

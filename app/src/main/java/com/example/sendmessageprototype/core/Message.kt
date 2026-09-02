@@ -1,7 +1,9 @@
 package com.example.sendmessageprototype.core
 
+import kotlinx.serialization.Serializable
 import java.util.UUID
 
+@Serializable
 class Message(
     val messageID: String = UUID.randomUUID().toString(),
     val type: MessageType,

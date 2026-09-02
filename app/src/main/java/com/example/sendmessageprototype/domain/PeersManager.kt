@@ -60,6 +60,14 @@ class PeersManager(
         }
     }
 
+    suspend fun updateIsPersistent(userID: String, isPersistent: Boolean) {
+        _savedPeers.value.find { it.userID == userID }?.let { user ->
+            user.updateIsPersistent(isPersistent)
+            userDAO.updateIsPersistent(userID, isPersistent)
+            _savedPeers.value = _savedPeers.value.toSet()
+        }
+    }
+
     suspend fun bind(userID: String, deviceAddress: String) {
         bindings[deviceAddress] = userID
         _savedPeers.value.find { it.userID == userID }?.let { user ->
@@ -83,6 +91,7 @@ class PeersManager(
         userName = userName,
         createdAt = createdAt,
         lastKnownDeviceAddress = lastKnownDeviceAddress,
+        isPersistent = isPersistent,
     )
 
     private fun User.toEntity() = UserEntity(
@@ -91,5 +100,6 @@ class PeersManager(
         createdAt = createdAt,
         lastKnownDeviceAddress = lastKnownDeviceAddress,
         isLocal = (userID == localUserID),
+        isPersistent = isPersistent,
     )
 }
