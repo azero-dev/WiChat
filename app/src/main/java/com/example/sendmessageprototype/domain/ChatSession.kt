@@ -1,5 +1,6 @@
 package com.example.sendmessageprototype.domain
 
+import com.example.sendmessageprototype.core.ConversationMeta
 import com.example.sendmessageprototype.core.DiscoveredPeer
 import com.example.sendmessageprototype.core.Message
 import com.example.sendmessageprototype.core.MessageType
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import java.util.UUID
@@ -50,6 +52,8 @@ class ChatSession(
     private var cache = SeenMessagesCache()
     private var discoveryJob: Job? = null
     private var activeUserConnection: Boolean = false
+    private val _connectingAddress = MutableStateFlow<String?>(null)
+    val connectingAddress: StateFlow<String?> = _connectingAddress.asStateFlow()
 
     fun start() {
         scope.launch {
@@ -112,6 +116,7 @@ class ChatSession(
                 peersManager?.userIDOf(event.deviceAddress)?.let { userID ->
                     peersManager?.addReachablePeer(userID)
                 }
+                _connectingAddress.value = null
             }
             is TransportEvent.PeerDisconnected -> {
                 peersManager?.userIDOf(event.deviceAddress)?.let {
@@ -119,6 +124,7 @@ class ChatSession(
                 }
                 peersManager?.unbind(event.deviceAddress)
                 activeUserConnection = false
+                _connectingAddress.value = null
             }
             is TransportEvent.EnvelopeReceived -> {
                 val fromDevice = event.fromDevice
@@ -139,6 +145,7 @@ class ChatSession(
 
     fun connectToDevice(deviceAddress: String) {
         activeUserConnection = true
+        _connectingAddress.value = deviceAddress
         transport.connect(deviceAddress)
     }
 
@@ -200,6 +207,11 @@ class ChatSession(
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
 
+//    getters
+    fun getConversationMetas(): Flow<List<ConversationMeta>> = conversationsManager?.getConversationMetas() ?: flowOf(emptyList())
+    fun getSavedPeers(): StateFlow<Set<User>> = peersManager?.savedPeers ?: MutableStateFlow(emptySet())
+
+//    identity
     private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress, isPersistent)
     private fun User.toEntity(isLocal: Boolean) = UserEntity(userID, userName, createdAt, lastKnownDeviceAddress, isLocal, isPersistent)
 }
