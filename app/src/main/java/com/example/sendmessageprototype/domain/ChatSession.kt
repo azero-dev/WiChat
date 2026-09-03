@@ -213,7 +213,6 @@ class ChatSession(
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
 
-//    getters
     fun getConversationMetas(): Flow<List<ConversationMeta>> = conversationsManager?.getConversationMetas() ?: flowOf(emptyList())
     fun getSavedPeers(): StateFlow<Set<User>> = peersManager?.savedPeers ?: MutableStateFlow(emptySet())
 

@@ -29,6 +29,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation.Companion.keyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
@@ -290,6 +293,7 @@ fun MainScreen(
                         val peer = savedPeers.find { it.userID == meta.peerID }
                         ConversationCard(
                             name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
+                            lastMessageText = String(meta.lastMessageText),
                             lastTime = meta.lastMessageAt,
                             onClick = { onConversationClick(meta.conversationID) }
                         )
@@ -318,7 +322,9 @@ fun ChatScreen(
     val messages by viewModel.messages.collectAsState(initial = emptyList())
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    val savedPeers by viewModel.session.getSavedPeers().collectAsState()
     val peerID = viewModel.conversationID.split("_").firstOrNull { it != localUserID } ?: "Unknown"
+    val peer = savedPeers.find { it.userID == peerID }
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -329,7 +335,7 @@ fun ChatScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Chat with $peerID") },
+                title = { Text(peer?.userName ?: "Chat") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Go back")
@@ -352,6 +358,7 @@ fun ChatScreen(
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Type...") },
                         maxLines = 4,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
                     )
                     Spacer(Modifier.width(8.dp))
                     IconButton(
@@ -399,10 +406,15 @@ fun MessageBubble(message: MessageEntity, isMine: Boolean) {
         MaterialTheme.shapes.medium.copy(bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp))
     }
 
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = alignment) {
+    Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+        contentAlignment = alignment)
+    {
         Card(
             shape = shape,
-            colors = CardDefaults.cardColors(containerColor = color)
+            colors = CardDefaults.cardColors(containerColor = color),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -464,6 +476,7 @@ fun WelcomeScreen(nameEntered: (String) -> Unit) {
             label = { Text("Enter your username") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
         )
         Spacer(modifier = Modifier.height(24.dp))
         Button(
@@ -516,13 +529,21 @@ fun DiscoveryBottomSheet(
 }
 
 @Composable
-fun ConversationCard(name: String, lastTime: Long, onClick: () -> Unit) {
+fun ConversationCard(name: String, lastMessageText: String, lastTime: Long, onClick: () -> Unit) {
+    val previewText = if (lastMessageText.length > 30) {
+        lastMessageText.take(30) + "..."
+    } else {
+        lastMessageText
+    }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 16.dp, vertical = 6.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -537,7 +558,11 @@ fun ConversationCard(name: String, lastTime: Long, onClick: () -> Unit) {
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
-                Text("Tap to see message", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text = previewText,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
             Text(
                 text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(lastTime),

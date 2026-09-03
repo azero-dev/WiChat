@@ -29,10 +29,13 @@ interface MessageDAO {
     suspend fun getMessageByID(messageId: String): MessageEntity?
 
     @Query("""
-        SELECT conversationID, receiverID as peerID, MAX(timestamp) as lastMessageAt
-        FROM messages
+        SELECT conversationID, 
+        CASE WHEN senderID = :localID THEN receiverID ELSE senderID END as peerID,
+        MAX(timestamp) as lastMessageAt,
+        (SELECT content FROM messages WHERE conversationID = m.conversationID ORDER BY timestamp DESC LIMIT 1) as lastMessageText
+        FROM messages m
         GROUP BY conversationID
         ORDER BY lastMessageAt DESC
     """)
-    fun getConversationMetas(): Flow<List<ConversationMeta>>
+    fun getConversationMetas(localID: String): Flow<List<ConversationMeta>>
 }

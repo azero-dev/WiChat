@@ -26,7 +26,7 @@ class ConversationsManager(
         return newConversation
     }
 
-    fun getConversationMetas(): Flow<List<ConversationMeta>> = messageDAO.getConversationMetas()
+    fun getConversationMetas(): Flow<List<ConversationMeta>> = messageDAO.getConversationMetas(localUserID)
 
     suspend fun addMessage(message: Message) {
         messageDAO.save(message.toEntity())

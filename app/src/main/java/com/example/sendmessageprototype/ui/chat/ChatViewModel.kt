@@ -9,7 +9,7 @@ import com.example.sendmessageprototype.persistence.MessageEntity
 import kotlinx.coroutines.flow.Flow
 
 class ChatViewModel(
-    private val session: ChatSession,
+    val session: ChatSession,
     private val messageDAO: MessageDAO,
     val conversationID: String,
 ) : ViewModel() {
