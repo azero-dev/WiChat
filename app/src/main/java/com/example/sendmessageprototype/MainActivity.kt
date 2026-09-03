@@ -1,388 +1,602 @@
 package com.example.sendmessageprototype
 
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.health.connect.datatypes.Device
-import android.net.wifi.WpsInfo
-import android.net.wifi.p2p.WifiP2pConfig
-import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
-import androidx.annotation.RequiresPermission
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation.Companion.keyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.DoneAll
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import androidx.room.Room
+import com.example.sendmessageprototype.core.DiscoveredPeer
+import com.example.sendmessageprototype.domain.ChatSession
+import com.example.sendmessageprototype.persistence.AppDatabase
+import com.example.sendmessageprototype.persistence.MessageDAO
+import com.example.sendmessageprototype.persistence.MessageEntity
+import com.example.sendmessageprototype.transport.WiFiDirectTransport
+import com.example.sendmessageprototype.ui.chat.ChatViewModel
+import com.example.sendmessageprototype.ui.discovery.DiscoveryViewModel
 import com.example.sendmessageprototype.ui.theme.SendMessagePrototypeTheme
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
-import androidx.compose.ui.platform.LocalDensity
 
 class MainActivity : ComponentActivity() {
-    private val manager: WifiP2pManager? by lazy(LazyThreadSafetyMode.NONE) {
-        getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager?
+    private lateinit var chatSession: ChatSession
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(
+            Manifest.permission.NEARBY_WIFI_DEVICES,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
-    private var channel: WifiP2pManager.Channel? = null
-    private var receiver: BroadcastReceiver? = null
-    private val viewModel by viewModels<WifiP2pViewModel>()
-    //Intents
-    private val intentFilter = IntentFilter().apply {
-        addAction(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION)
-        addAction(WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION)
-        addAction(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-        addAction(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION)
-    }
-
-//     Request permissions from user
-    private val requestPermissionLauncher = registerForActivityResult(
+    private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-//            Toast.makeText(this, "permissions granted", Toast.LENGTH_SHORT).show()
-//            Iniciar la busqueda automaticamente al recibir permisos
-            discoverPeers()
+        if (permissions.all { it.value }) {
+            chatSession.start()
         } else {
-            Toast.makeText(this, "permission are needed to search for peers", Toast.LENGTH_SHORT)
-                .show()
+//            Todo: mostrar mensaje error
         }
     }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // initiate channel and receiver
-        channel = manager?.initialize(this, mainLooper, null)
-        channel?.also { channel ->
-            receiver = WifiP2pBroadcastReceiver(manager, channel, viewModel, this)
-        }
+        val database = Room.databaseBuilder(
+            applicationContext,
+            AppDatabase::class.java,
+            "WiChat_db"
+        ).build()
+        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+        val channel = manager.initialize(this, mainLooper, null)
+        val transport = WiFiDirectTransport(applicationContext, manager, channel)
+        chatSession = ChatSession(
+            transport = transport,
+            userDAO = database.userDAO(),
+            messageDAO = database.messageDAO(),
+            outboxDAO = database.outboxDAO(),
+        )
         checkAndRequestPermissions()
-        // Dejar registerReceiver aqui ademas del de onResume?
-        // registerReceiver(receiver, intentFilter)
         enableEdgeToEdge()
         setContent {
             SendMessagePrototypeTheme {
-                SendMessagePrototypeApp(
-                    viewModel = viewModel,
-                    onDiscoverPeers = { checkAndRequestPermissions() },
-                    onConnect = { device -> connectToDevice(device) }
-                )
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    AppNavigation(chatSession, database.messageDAO())
+                }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-//         Starting the BroadcastReceiver
-        receiver?.also { receiver ->
-            registerReceiver(receiver, intentFilter)
-        }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        receiver?.also { receiver ->
-            unregisterReceiver(receiver)
-        }
-    }
-
-    @RequiresPermission(anyOf = [
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.NEARBY_WIFI_DEVICES
-    ])
-    private fun discoverPeers() {
-        manager?.discoverPeers(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Searching for peers (on success)",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-
-            override fun onFailure(reasonCode: Int) {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Searching for peers (on failure)",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        })
     }
 
     private fun checkAndRequestPermissions() {
-        val permissionsToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Permissions for android 13+
-            arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)
+        val missing = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            chatSession.start()
         } else {
-            // permissions for android 12 and lower
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        val missingPermissions = permissionsToRequest.filter {
-            checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missingPermissions.isEmpty()) {
-            discoverPeers()
-        } else {
-            requestPermissionLauncher.launch(missingPermissions.toTypedArray())
+            permissionLauncher.launch(missing.toTypedArray())
         }
     }
 
-    @RequiresPermission(anyOf = [
-        Manifest.permission.ACCESS_FINE_LOCATION,
-        Manifest.permission.NEARBY_WIFI_DEVICES
-    ])
-    fun connectToDevice(device: WifiP2pDevice) {
-        val config = WifiP2pConfig().apply {
-            deviceAddress = device.deviceAddress
-            wps.setup = WpsInfo.PBC
-        }
-        manager?.connect(channel, config, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Connected to ${device.deviceName}, ${device.deviceAddress}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-            override fun onFailure(reason: Int) {
-                Toast.makeText(
-                    this@MainActivity,
-                    "Failed to connect to ${device.deviceName}. Reason: $reason",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        })
-    }
-}
-
-//@PreviewScreenSizes
-@Composable
-fun SendMessagePrototypeApp(
-    viewModel: WifiP2pViewModel,
-    onDiscoverPeers: () -> Unit = {},
-    onConnect: (WifiP2pDevice) -> Unit
-) {
-//    Menu navegation detection
-    var currentDestination by rememberSaveable { mutableStateOf(AppDestinations.HOME) }
-//    Peers
-    val peers by viewModel.peers.collectAsState()
-    val selectedPeer = viewModel.selectedPeer
-//    UI: detect keyboard
-    val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-
-    NavigationSuiteScaffold(
-        layoutType = if (isKeyboardOpen) NavigationSuiteType.None else NavigationSuiteType.NavigationBar,
-        navigationSuiteItems = {
-            AppDestinations.entries.forEach {
-                item(
-                    icon = {
-                        Icon(
-                            painterResource(it.icon),
-                            contentDescription = it.label
-                        )
-                    },
-                    label = { Text(it.label) },
-                    selected = it == currentDestination,
-                    onClick = { currentDestination = it }
-                )
-            }
-        }
-    ) {
-        Scaffold(
-            modifier = Modifier
-                .fillMaxSize(),
-//            contentWindowInsets = WindowInsets(0, 8.dp, 0, 0)
-        ) { innerPadding ->
-            when (currentDestination) {
-                AppDestinations.HOME -> {
-                    Greeting(
-                        modifier = Modifier
-                            .padding(innerPadding)
-                            .consumeWindowInsets(innerPadding)
-                            .imePadding(),
-                        peers = peers,
-                        selectedPeer = selectedPeer,
-                        onPeerClick = { device ->
-                            viewModel.selectPeer(device)
-                            onConnect(device)
-                        },
-                        onDiscoverPeers = onDiscoverPeers
-                    )
-                }
-
-                AppDestinations.FAVORITES -> {
-//                    Favorites(innerPadding)
-                }
-
-                AppDestinations.PROFILE -> {
-//                    Profile(innerPadding)
-                }
-            }
-
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::chatSession.isInitialized) {
+            chatSession.stop()
         }
     }
-}
-
-enum class AppDestinations(
-    val label: String,
-    val icon: Int,
-) {
-    HOME("Home", R.drawable.ic_home),
-    FAVORITES("Messages", R.drawable.ic_favorite),
-    PROFILE("Profile", R.drawable.ic_account_box),
 }
 
 @Composable
-fun Greeting(
-    modifier: Modifier = Modifier,
-    peers: List<WifiP2pDevice>,
-    selectedPeer: WifiP2pDevice?,
-    onPeerClick: (WifiP2pDevice) -> Unit,
-    onDiscoverPeers: () -> Unit = {}
+fun AppNavigation(
+    session: ChatSession,
+    messageDAO: MessageDAO,
 ) {
-    var messageText by rememberSaveable { mutableStateOf("") }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "WiChat",
-                style = MaterialTheme.typography.titleLarge
-            )
-            Button(onClick = onDiscoverPeers) {
-                Text("Discover peers")
-            }
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(vertical = 16.dp)
-        ) {
-            Text(
-                text = "Available Peers to connect (${peers.size})",
-                style = MaterialTheme.typography.titleMedium
-            )
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(peers) { device ->
-                    Text(
-                        text = if (device.deviceName.isNullOrEmpty()) "Unnamed device" else device.deviceName,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPeerClick(device) }
-                            .padding(8.dp)
-                    )
+    val navController = rememberNavController()
+    val sessionState by session.state.collectAsState()
+    val savedPeers by session.getSavedPeers().collectAsState()
+    LaunchedEffect(savedPeers) {
+        val connectingAddress = session.connectingAddress.value
+        if (connectingAddress != null) {
+            val identifiedUser = savedPeers.find { it.lastKnownDeviceAddress == connectingAddress }
+            identifiedUser?.let { user ->
+                val convID = if (session.state.value is ChatSession.SessionState.Ready) {
+                    val localID = (session.state.value as ChatSession.SessionState.Ready).localUser.userID
+                    if (localID < user.userID) "${localID}_${user.userID}" else "${user.userID}_${localID}"
+                } else ""
+                if (convID.isNotEmpty()) {
+                    navController.navigate("chat/$convID")
                 }
             }
-            Box(
-                modifier = Modifier
-//                    .fillMaxSize()
-                    .padding(vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Selected peer: ${selectedPeer?.deviceName ?: "None"}",
-//                    text = "No peers found",
-//                    modifier = Modifier.align(Alignment.Center),
-                    style = MaterialTheme.typography.bodyMedium
+        }
+    }
+    LaunchedEffect(sessionState) {
+        when (sessionState) {
+            is ChatSession.SessionState.IdentityRequired -> {
+                navController.navigate("welcome") {
+                    popUpTo("welcome") { inclusive = true }
+                }
+            }
+            is ChatSession.SessionState.Ready -> {
+                navController.navigate("main") {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+            else -> {}
+        }
+    }
+    NavHost(navController = navController, startDestination = "loading") {
+        composable("loading") {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        composable("welcome") {
+            WelcomeScreen(nameEntered = { name ->
+                session.initialiseIdentity(name)
+            })
+        }
+        composable("main") {
+            MainScreen(
+                session = session,
+                onConversationClick = { convID ->
+                    navController.navigate("chat/$convID")
+                }
+            )
+        }
+        composable(
+            route = "chat/{conversationID}",
+            arguments = listOf(navArgument("conversationID") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val convID = backStackEntry.arguments?.getString("conversationID") ?: ""
+            val readyState = sessionState as? ChatSession.SessionState.Ready
+            if (readyState != null) {
+                val chatViewModel: ChatViewModel = viewModel(
+                    factory = ChatViewModel.Factory(session, messageDAO, convID)
+                )
+                ChatScreen(
+                    viewModel = chatViewModel,
+                    localUserID = readyState.localUser.userID,
+                    onBack = { navController.popBackStack() }
                 )
             }
         }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            Text(
-                text = "Messages",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Select user to start chating",
-                    modifier = Modifier.align(Alignment.Center),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(
+    session: ChatSession,
+    onConversationClick: (String) -> Unit,
+) {
+    val conversations by session.getConversationMetas().collectAsState(initial = emptyList())
+    val savedPeers by session.getSavedPeers().collectAsState()
+    var showDiscovery by remember { mutableStateOf(false) }
+    val connectingAddress by session.connectingAddress.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("WiChat") })
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { showDiscovery = true }) {
+                Icon(Icons.Default.Add, contentDescription = "New chat")
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    placeholder = { Text("Type message...") },
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = {
-//                        TODO: Send message to selected peer
-                        messageText = ""
-                    },
-                    modifier = Modifier.padding(start = 8.dp)
+        }
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (connectingAddress != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Send")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Connecting with device...", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            if (conversations.isEmpty()) {
+                Box(Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                    contentAlignment = Alignment.Center) {
+                    Text("Tap on + to start a new one")
+                }
+            } else {
+                LazyColumn(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                ) {
+                    items(conversations) { meta ->
+                        val peer = savedPeers.find { it.userID == meta.peerID }
+                        ConversationCard(
+                            name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
+                            lastMessageText = String(meta.lastMessageText),
+                            lastTime = meta.lastMessageAt,
+                            onClick = { onConversationClick(meta.conversationID) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (showDiscovery) {
+        DiscoveryBottomSheet(
+            viewModel = viewModel(
+                factory = DiscoveryViewModel.Factory(session)
+            ),
+            onDismiss = { showDiscovery = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    localUserID: String,
+    onBack: () -> Unit,
+) {
+    val messages by viewModel.messages.collectAsState(initial = emptyList())
+    var inputText by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    val savedPeers by viewModel.session.getSavedPeers().collectAsState()
+    val peerID = viewModel.conversationID.split("_").firstOrNull { it != localUserID } ?: "Unknown"
+    val peer = savedPeers.find { it.userID == peerID }
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(peer?.userName ?: "Chat") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Go back")
+                    }
+                }
+            )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 3.dp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .imePadding(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Type...") },
+                        maxLines = 4,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(
+                        onClick = {
+                            if (inputText.isNotBlank()) {
+                                val receiverID = viewModel.conversationID
+                                    .split("_")
+                                    .firstOrNull { it != localUserID } ?: ""
+                                viewModel.sendMessage(inputText, receiverID)
+                                inputText = ""
+                            }
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send")
+                    }
+                }
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            contentPadding = PaddingValues(8.dp)
+        ) {
+            items(messages) { message ->
+                MessageBubble(message, isMine = message.senderID == localUserID)
+            }
+        }
+    }
+}
+
+@Composable
+fun MessageBubble(message: MessageEntity, isMine: Boolean) {
+    val alignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
+    val color = if (isMine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+    val shape = if (isMine) {
+        MaterialTheme.shapes.medium.copy(bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp))
+    } else {
+        MaterialTheme.shapes.medium.copy(bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp))
+    }
+
+    Box(modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+        contentAlignment = alignment)
+    {
+        Card(
+            shape = shape,
+            colors = CardDefaults.cardColors(containerColor = color),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(text = String(message.content), style = MaterialTheme.typography.bodyLarge)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(message.timestamp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    if (isMine) {
+                        Spacer(Modifier.width(4.dp))
+                        MessageStatusIcon(message.state)
+                    }
                 }
             }
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
-    SendMessagePrototypeTheme {
-        Greeting(
-            peers = emptyList(),
-            selectedPeer = null,
-            onPeerClick = {}
+fun MessageStatusIcon(state: String) {
+    val icon = when (state) {
+        "SENDING" -> Icons.Default.Done
+        "DELIVERED" -> Icons.Default.DoneAll
+        "FAILED" -> Icons.Default.ErrorOutline
+        else -> Icons.Default.Done
+    }
+    val color = if (state == "FAILED") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    Icon(
+        imageVector = icon,
+        contentDescription = state,
+        modifier = Modifier.size(16.dp),
+        tint = color,
+    )
+}
+
+@Composable
+fun WelcomeScreen(nameEntered: (String) -> Unit) {
+    var name by remember { mutableStateOf("")}
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Welcome to WiChat",
+            style = MaterialTheme.typography.headlineMedium
         )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Enter your username") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = { if (name.isNotBlank()) nameEntered(name) },
+            enabled = name.isNotBlank(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Create")
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DiscoveryBottomSheet(
+    viewModel: DiscoveryViewModel,
+    onDismiss: () -> Unit
+) {
+    val peers by viewModel.discoveredPeers.collectAsState()
+    val modalBottomSheetState = rememberModalBottomSheetState()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = modalBottomSheetState,
+    ) { 
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
+        ) {
+            Text(
+                "Searching nearby devices",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            if (peers.isEmpty()) {
+                Text("No devices found yet")
+            } else {
+                LazyColumn { 
+                    items(peers) { peer ->
+                        DiscoveryPeerCard(peer) {
+                            viewModel.connectToDevice(peer.deviceAddress)
+                            onDismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConversationCard(name: String, lastMessageText: String, lastTime: Long, onClick: () -> Unit) {
+    val previewText = if (lastMessageText.length > 30) {
+        lastMessageText.take(30) + "..."
+    } else {
+        lastMessageText
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Default.AccountCircle,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = previewText,
+                    maxLines = 1,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Text(
+                text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(lastTime),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+@Composable
+fun DiscoveryPeerCard(
+    peer: DiscoveredPeer,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Wifi, contentDescription = null)
+            Spacer(Modifier.width(16.dp))
+            Column { 
+                Text("Device found", style = MaterialTheme.typography.titleMedium)
+                Text("${peer.deviceName} (${peer.deviceAddress})", style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
