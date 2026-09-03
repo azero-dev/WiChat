@@ -43,6 +43,8 @@ class ChatSession(
     }
     private val _state = MutableStateFlow<SessionState>(SessionState.Loading)
     val state: StateFlow<SessionState> = _state.asStateFlow()
+    private var isStarted = false
+    private var heartbeat: Job? = null
     private var localUser: User? = null
     private var peersManager: PeersManager? = null
     private var conversationsManager: ConversationsManager? = null
@@ -56,6 +58,8 @@ class ChatSession(
     val connectingAddress: StateFlow<String?> = _connectingAddress.asStateFlow()
 
     fun start() {
+        if (isStarted) return
+        isStarted = true
         scope.launch {
             val entity = userDAO.getLocalUser()
             if (entity != null) {
@@ -68,8 +72,10 @@ class ChatSession(
 
     fun stop() {
         stopDiscoveryCycle()
+        stopHeartbeat()
         transport.disconnect()
         scope.cancel()
+        isStarted = false
     }
 
     fun initialiseIdentity(userName: String) {
@@ -119,6 +125,7 @@ class ChatSession(
                 }
             }
             is TransportEvent.PeerDisconnected -> {
+                stopHeartbeat()
                 peersManager?.userIDOf(event.deviceAddress)?.let {
                     peersManager?.removeReachablePeer(it)
                 }
@@ -129,11 +136,17 @@ class ChatSession(
             is TransportEvent.EnvelopeReceived -> {
                 val fromDevice = event.fromDevice
                 if(event.envelope.payload.type == MessageType.IDENTITY) {
+                    val wasReachable = peersManager?.userIDOf(fromDevice)?.let {
+                        peersManager?.isReachable(it)
+                    } ?: false
                     handshaker?.handleIncomingIdentity(
                         event.envelope.payload.content,
                         fromDevice,
                     )
-                    scope.launch { handshaker?.sendIdentity() }
+//                    to avoid loops, only responds if first contact
+                    if (!wasReachable) {
+                        scope.launch { handshaker?.sendIdentity() }
+                    }
                 } else {
                     peersManager?.userIDOf(fromDevice)?.let { userID ->
                         incoming?.handleIncoming(event.envelope, userID)
@@ -155,12 +168,15 @@ class ChatSession(
     }
 
     private fun onPeerIdentified(user: User) {
-        peersManager?.addReachablePeer(user.userID)
-        _connectingAddress.value = null
+        startHeartbeat()
         scope.launch {
-            val isPersistent = transport.isCurrentConnectionPersistent()
-            peersManager?.updateIsPersistent(user.userID, isPersistent)
             outbox?.trySend()
+            if (peersManager?.isReachable(user.userID) == false) {
+                peersManager?.addReachablePeer(user.userID)
+                val isPersistent = transport.isCurrentConnectionPersistent()
+                peersManager?.updateIsPersistent(user.userID, isPersistent)
+            }
+            _connectingAddress.value = null
         }
     }
 
@@ -192,6 +208,27 @@ class ChatSession(
         }
     }
 
+    private fun startHeartbeat() {
+//        Wifi Direct seems unstable while not in use
+//        this may help to keep connected
+        heartbeat?.cancel()
+        heartbeat = scope.launch {
+            while (isActive) {
+                delay(20000)
+                if (transport.connectedDevice() != null) {
+                    handshaker?.sendIdentity()
+                } else {
+                    break
+                }
+            }
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeat?.cancel()
+        heartbeat = null
+    }
+
     fun sendMessage(content: String, receiverID: String) {
         val user = localUser ?: return
         val convID = generateConversationID(user.userID, receiverID)
@@ -209,12 +246,22 @@ class ChatSession(
         }
     }
 
+    fun requestChatConnection(peerID: String) {
+        if (peersManager?.isReachable(peerID) == true) return
+        peersManager?.savedPeers?.value?.find { it.userID == peerID }?.let { user ->
+            user.lastKnownDeviceAddress?.let { address ->
+                connectToDevice(address)
+            }
+        }
+    }
+
     private fun generateConversationID(userA: String, userB: String): String {
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
 
     fun getConversationMetas(): Flow<List<ConversationMeta>> = conversationsManager?.getConversationMetas() ?: flowOf(emptyList())
     fun getSavedPeers(): StateFlow<Set<User>> = peersManager?.savedPeers ?: MutableStateFlow(emptySet())
+    fun getMessageDAO(): MessageDAO = messageDAO
 
 //    identity
     private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress, isPersistent)

@@ -1,11 +1,14 @@
 package com.example.sendmessageprototype
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -96,7 +99,26 @@ import com.example.sendmessageprototype.ui.discovery.DiscoveryViewModel
 import com.example.sendmessageprototype.ui.theme.SendMessagePrototypeTheme
 
 class MainActivity : ComponentActivity() {
-    private lateinit var chatSession: ChatSession
+    private var chatService: ChatService? = null
+    private var isBound = false
+    private var serviceReady by mutableStateOf(false)
+
+    private val connection = object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as ChatService.ChatServiceBinder
+            chatService = binder.getService()
+            isBound = true
+//            chatService?.chatSession?.start()
+            serviceReady = true
+            checkAndRequestPermissions()
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            chatService = null
+            isBound = false
+            serviceReady = false
+        }
+    }
+
     private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(
             Manifest.permission.NEARBY_WIFI_DEVICES,
@@ -105,32 +127,23 @@ class MainActivity : ComponentActivity() {
     } else {
         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions.all { it.value }) {
-            chatSession.start()
+            chatService?.chatSession?.start()
         } else {
-//            Todo: mostrar mensaje error
+            checkAndRequestPermissions()
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val database = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "WiChat_db"
-        ).build()
-        val manager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        val channel = manager.initialize(this, mainLooper, null)
-        val transport = WiFiDirectTransport(applicationContext, manager, channel)
-        chatSession = ChatSession(
-            transport = transport,
-            userDAO = database.userDAO(),
-            messageDAO = database.messageDAO(),
-            outboxDAO = database.outboxDAO(),
-        )
-        checkAndRequestPermissions()
+        Intent(this, ChatService::class.java).also { intent ->
+            startService(intent)
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        }
         enableEdgeToEdge()
         setContent {
             SendMessagePrototypeTheme {
@@ -138,7 +151,14 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    AppNavigation(chatSession, database.messageDAO())
+                    if (serviceReady && chatService != null) {
+                        val session = chatService!!.chatSession
+                        AppNavigation(session, session.getMessageDAO())
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -149,7 +169,7 @@ class MainActivity : ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
-            chatSession.start()
+            chatService?.chatSession?.start()
         } else {
             permissionLauncher.launch(missing.toTypedArray())
         }
@@ -157,8 +177,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::chatSession.isInitialized) {
-            chatSession.stop()
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
         }
     }
 }
@@ -226,6 +247,12 @@ fun AppNavigation(
         ) { backStackEntry ->
             val convID = backStackEntry.arguments?.getString("conversationID") ?: ""
             val readyState = sessionState as? ChatSession.SessionState.Ready
+            LaunchedEffect(convID) {
+                if (readyState != null) {
+                    val peerID = convID.split("_").firstOrNull() { it != readyState.localUser.userID }
+                    peerID?.let { session.requestChatConnection(it) }
+                }
+            }
             if (readyState != null) {
                 val chatViewModel: ChatViewModel = viewModel(
                     factory = ChatViewModel.Factory(session, messageDAO, convID)

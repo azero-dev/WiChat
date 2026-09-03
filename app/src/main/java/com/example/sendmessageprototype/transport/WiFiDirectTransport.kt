@@ -79,8 +79,20 @@ class WiFiDirectTransport(
     }
 
     fun disconnect() {
-        manager.removeGroup(channel, null)
+        val macToDisconnect = remotePeerMac ?: "unknown"
+        manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {}
+            override fun onFailure(reason: Int) {}
+        })
         closeResources()
+        remotePeerMac = null
+        remoteClientIP = null
+        connectedGroupOwnerAddress = null
+        lastConnectionIsPersistent = false
+//        notify chatsession to clean
+        scope.launch {
+            _events.emit(TransportEvent.PeerDisconnected(macToDisconnect))
+        }
     }
 
     private fun closeResources() {
@@ -104,11 +116,14 @@ class WiFiDirectTransport(
                     output.writeInt(data.size)
                     output.write(data)
                     output.flush()
+                    return@withContext SendResult.Success(remotePeerMac?: "unknown")
                 }
-                return@withContext SendResult.Success(remotePeerMac?: "unknown")
             } catch (e: Exception) {
+//                if port is busy, try next port
             }
         }
+//        if connection not successfull, then disconnect
+        disconnect()
         SendResult.Error
     }
 
@@ -137,6 +152,8 @@ class WiFiDirectTransport(
             try {
                 if (isGroupOwner) {
                     remoteClientIP = socket.inetAddress.hostAddress
+                } else {
+                    connectedGroupOwnerAddress = socket.inetAddress.hostAddress
                 }
                 socket.use { sock ->
                     val input = DataInputStream(sock.getInputStream())
