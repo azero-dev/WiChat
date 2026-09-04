@@ -50,7 +50,12 @@ class Converters {
 }
 
 @Database(
-    entities = [UserEntity::class, MessageEntity::class, OutboxEntity::class],
+    entities = [
+        UserEntity::class,
+        MessageEntity::class,
+        OutboxEntity::class,
+        ConfigEntity::class
+               ],
     version = 1,
     exportSchema = false,
 )
@@ -60,4 +65,5 @@ abstract class AppDatabase: RoomDatabase() {
     abstract fun userDAO(): UserDAO
     abstract fun messageDAO(): MessageDAO
     abstract fun outboxDAO(): OutboxDAO
+    abstract fun configDAO(): ConfigDAO
 }

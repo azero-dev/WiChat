@@ -36,6 +36,7 @@ class ChatService : Service() {
             userDAO = database.userDAO(),
             messageDAO = database.messageDAO(),
             outboxDAO = database.outboxDAO(),
+            configDAO = database.configDAO(),
         )
     }
 

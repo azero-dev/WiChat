@@ -1,5 +1,6 @@
 package com.example.sendmessageprototype.domain
 
+import com.example.sendmessageprototype.core.AppConfig
 import com.example.sendmessageprototype.core.ConversationMeta
 import com.example.sendmessageprototype.core.DiscoveredPeer
 import com.example.sendmessageprototype.core.Message
@@ -7,6 +8,8 @@ import com.example.sendmessageprototype.core.MessageType
 import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.core.TransportEvent
 import com.example.sendmessageprototype.core.User
+import com.example.sendmessageprototype.persistence.ConfigDAO
+import com.example.sendmessageprototype.persistence.ConfigEntity
 import com.example.sendmessageprototype.persistence.MessageDAO
 import com.example.sendmessageprototype.persistence.OutboxDAO
 import com.example.sendmessageprototype.persistence.UserDAO
@@ -29,7 +32,6 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
-import kotlinx.serialization.json.internal.decodeByReader
 import java.util.UUID
 
 class ChatSession(
@@ -37,6 +39,7 @@ class ChatSession(
     private val userDAO: UserDAO,
     private val messageDAO: MessageDAO,
     private val outboxDAO: OutboxDAO,
+    private val configDAO: ConfigDAO,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
     sealed class SessionState {
@@ -48,6 +51,8 @@ class ChatSession(
         private set
     private val _state = MutableStateFlow<SessionState>(SessionState.Loading)
     val state: StateFlow<SessionState> = _state.asStateFlow()
+    private val _config = MutableStateFlow(AppConfig())
+    val config: StateFlow<AppConfig> = _config.asStateFlow()
     private var isStarted = false
     private var heartbeat: Job? = null
     private var peersManager: PeersManager? = null
@@ -107,6 +112,11 @@ class ChatSession(
         op.loadPending()
         launchEventCollectors()
         _state.value = SessionState.Ready(user)
+        configDAO.getConfig().onEach { entity ->
+            entity?.let {
+                _config.value = AppConfig(it.notificationsEnabled, it.isInactiveMode)
+            }
+        }.launchIn(scope)
         startDiscoveryCycle()
     }
 
@@ -292,12 +302,39 @@ class ChatSession(
         }
     }
 
+    fun updateLocalUserName(newName: String) {
+        val user = localUser ?: return
+        user.updateUserName(newName)
+        scope.launch {
+            userDAO.update(user.toEntity(isLocal = true))
+            _state.value = SessionState.Ready(user)
+        }
+    }
+
+    fun toggleNotifications(enabled: Boolean) {
+        scope.launch {
+            configDAO.saveConfig(ConfigEntity(
+                notificationsEnabled = enabled,
+                isInactiveMode = _config.value.isInactiveMode
+            ))
+        }
+    }
+
+    fun toggleInactiveMode(enabled: Boolean) {
+        scope.launch {
+            configDAO.saveConfig(ConfigEntity(
+                notificationsEnabled = _config.value.notificationsEnabled,
+                isInactiveMode = enabled
+            ))
+        }
+    }
+
     fun generateConversationID(userA: String, userB: String): String {
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
 
+//    getters
     fun userIDOf(deviceAddress: String): String? = peersManager?.userIDOf(deviceAddress)
-
     fun getConversationMetas(): Flow<List<ConversationMeta>> = conversationsManager?.getConversationMetas() ?: flowOf(emptyList())
     fun getSavedPeers(): StateFlow<Set<User>> = peersManager?.savedPeers ?: MutableStateFlow(emptySet())
     fun getMessageDAO(): MessageDAO = messageDAO

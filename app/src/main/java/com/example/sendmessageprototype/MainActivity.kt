@@ -50,9 +50,11 @@ import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +62,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
@@ -77,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewScreenSizes
@@ -89,6 +93,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.room.Room
+import androidx.room.util.TableInfo
 import com.example.sendmessageprototype.core.DiscoveredPeer
 import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.domain.ChatSession
@@ -279,10 +284,18 @@ fun MainScreen(
     val savedPeers by session.getSavedPeers().collectAsState()
     var showDiscovery by remember { mutableStateOf(false) }
     val connectingAddress by session.connectingAddress.collectAsState()
+    var showProfile by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("WiChat") })
+            TopAppBar(
+                title = { Text("WiChat") },
+                actions = {
+                    IconButton(onClick = { showProfile = true }) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = "Profile")
+                    }
+                }
+            )
         },
         floatingActionButton = {
             FloatingActionButton(onClick = { showDiscovery = true }) {
@@ -348,6 +361,12 @@ fun MainScreen(
                 showDiscovery = false
                 session.startDiscoveryCycle()
             }
+        )
+    }
+    if (showProfile) {
+        ProfileBottomSheet(
+            session = session,
+            onDismiss = { showProfile = false }
         )
     }
 }
@@ -588,6 +607,97 @@ fun DiscoveryBottomSheet(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileBottomSheet(
+    session: ChatSession,
+    onDismiss: () -> Unit,
+) {
+    val sessionState by session.state.collectAsState()
+    val localUser = (sessionState as? ChatSession.SessionState.Ready)?.localUser ?: return
+    val config by session.config.collectAsState()
+    var newName by remember { mutableStateOf(localUser.userName) }
+    val modalBottomSheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = modalBottomSheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)
+        ) {
+            Text("My profile", style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "User ID",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                localUser.userID,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                fontStyle = FontStyle.Italic,
+            )
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            OutlinedTextField(
+                value = newName,
+                onValueChange = {newName = it },
+                label = { Text("Display name") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    if (newName != localUser.userName && newName.isNotBlank()) {
+                        IconButton(onClick = { session.updateLocalUserName(newName) }) {
+                            Icon(Icons.Default.Save, contentDescription = "Save")
+                        }
+                    }
+                }
+            )
+            Spacer(Modifier.height(16.dp))
+            ProfileToggle(
+                "Notifications",
+                "Alert for new messages",
+                config.notificationsEnabled,
+            ) {
+                session.toggleNotifications(it)
+            }
+            Spacer(Modifier.height(16.dp))
+            ProfileToggle(
+                "Inactive Mode",
+                "Pause network activity",
+                config.isInactiveMode
+            ) {
+                session.toggleInactiveMode(it)
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileToggle(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+        )
     }
 }
 
