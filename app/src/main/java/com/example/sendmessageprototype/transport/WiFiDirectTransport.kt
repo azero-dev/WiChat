@@ -95,6 +95,14 @@ class WiFiDirectTransport(
         }
     }
 
+    fun cancelConnect() {
+        manager.cancelConnect(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() { }
+            override fun onFailure(reason: Int) { }
+        })
+        disconnect()
+    }
+
     private fun closeResources() {
         try {
             serverSocket?.close()

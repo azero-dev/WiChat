@@ -15,6 +15,7 @@ class IncomingMessageHandler(
 ) {
     suspend fun handleIncoming(envelope: MessageInTransit, fromPeer: String) {
         val payload = envelope.payload
+//        resend ack just in case previous one was lost
         if (!cache.markIfNew(envelope.messageID)) {
             if (payload.type == MessageType.TEXT && isAddressedToLocalUser(envelope)) {
                 sendAck(payload)
@@ -73,5 +74,6 @@ class IncomingMessageHandler(
             state = MessageState.SENDING,
         )
         outbox.enqueue(ack)
+        outbox.trySend()
     }
 }

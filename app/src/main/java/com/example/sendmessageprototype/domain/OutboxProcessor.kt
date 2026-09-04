@@ -90,7 +90,7 @@ class OutboxProcessor(
     private fun shouldAttemptSend(envelope: MessageInTransit, connectedUserID: String): Boolean {
         if (envelope.alreadySentTo.contains(connectedUserID)) return false
         val now = System.currentTimeMillis()
-        if (now - envelope.lastAttemptAt < 20000) return false
+        if (now - envelope.lastAttemptAt < 10000 && envelope.payload.type == MessageType.TEXT) return false
         return true
     }
 

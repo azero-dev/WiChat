@@ -33,7 +33,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.input.InputTransformation.Companion.keyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -49,6 +48,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.FloatingActionButton
@@ -89,6 +90,7 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.room.Room
 import com.example.sendmessageprototype.core.DiscoveredPeer
+import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.domain.ChatSession
 import com.example.sendmessageprototype.persistence.AppDatabase
 import com.example.sendmessageprototype.persistence.MessageDAO
@@ -294,20 +296,23 @@ fun MainScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.secondaryContainer)
+                        .clickable { session.cancelConnectAttempt() }
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
                         Spacer(Modifier.width(8.dp))
-                        Text("Connecting with device...", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "Connecting... (Tap to cancel)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     }
                 }
             }
             if (conversations.isEmpty()) {
-                Box(Modifier
-                    .fillMaxSize()
-                    .padding(padding),
+                Box(Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center) {
                     Text("Tap on + to start a new one")
                 }
@@ -318,10 +323,13 @@ fun MainScreen(
                 ) {
                     items(conversations) { meta ->
                         val peer = savedPeers.find { it.userID == meta.peerID }
+                        val status by session.getPeerStatus(meta.peerID).collectAsState(initial = PeerStatus.ABSENT)
                         ConversationCard(
                             name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
                             lastMessageText = String(meta.lastMessageText),
                             lastTime = meta.lastMessageAt,
+                            status = status,
+                            isPersistent = peer?.isPersistent ?: false,
                             onClick = { onConversationClick(meta.conversationID) }
                         )
                     }
@@ -334,7 +342,10 @@ fun MainScreen(
             viewModel = viewModel(
                 factory = DiscoveryViewModel.Factory(session)
             ),
-            onDismiss = { showDiscovery = false }
+            onDismiss = {
+                showDiscovery = false
+                session.startDiscoveryCycle()
+            }
         )
     }
 }
@@ -347,6 +358,7 @@ fun ChatScreen(
     onBack: () -> Unit,
 ) {
     val messages by viewModel.messages.collectAsState(initial = emptyList())
+    val status by viewModel.peerStatus.collectAsState()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val savedPeers by viewModel.session.getSavedPeers().collectAsState()
@@ -391,10 +403,7 @@ fun ChatScreen(
                     IconButton(
                         onClick = {
                             if (inputText.isNotBlank()) {
-                                val receiverID = viewModel.conversationID
-                                    .split("_")
-                                    .firstOrNull { it != localUserID } ?: ""
-                                viewModel.sendMessage(inputText, receiverID)
+                                viewModel.sendMessage(inputText)
                                 inputText = ""
                             }
                         },
@@ -409,15 +418,18 @@ fun ChatScreen(
             }
         }
     ) { padding ->
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(8.dp)
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            items(messages) { message ->
-                MessageBubble(message, isMine = message.senderID == localUserID)
+            ProximityBanner(status = status) { viewModel.connectManually() }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(8.dp)
+            ) {
+                items(messages) { message ->
+                    MessageBubble(message, isMine = message.senderID == localUserID)
+                }
             }
         }
     }
@@ -503,7 +515,7 @@ fun WelcomeScreen(nameEntered: (String) -> Unit) {
             label = { Text("Enter your username") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
         )
         Spacer(modifier = Modifier.height(24.dp))
         Button(
@@ -534,11 +546,20 @@ fun DiscoveryBottomSheet(
                 .fillMaxWidth()
                 .padding(bottom = 32.dp, start = 16.dp, end = 16.dp)
         ) {
-            Text(
-                "Searching nearby devices",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Searching nearby devices",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                IconButton(onClick = { viewModel.refreshScan() }) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Scan again")
+                }
+            }
             if (peers.isEmpty()) {
                 Text("No devices found yet")
             } else {
@@ -556,7 +577,14 @@ fun DiscoveryBottomSheet(
 }
 
 @Composable
-fun ConversationCard(name: String, lastMessageText: String, lastTime: Long, onClick: () -> Unit) {
+fun ConversationCard(
+    name: String,
+    lastMessageText: String,
+    lastTime: Long,
+    status: PeerStatus,
+    isPersistent: Boolean,
+    onClick: () -> Unit
+) {
     val previewText = if (lastMessageText.length > 30) {
         lastMessageText.take(30) + "..."
     } else {
@@ -584,7 +612,10 @@ fun ConversationCard(name: String, lastMessageText: String, lastTime: Long, onCl
             )
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, style = MaterialTheme.typography.titleMedium)
+                    ConnectionStatusIcon(status, isPersistent)
+                }
                 Text(
                     text = previewText,
                     maxLines = 1,
@@ -624,6 +655,59 @@ fun DiscoveryPeerCard(
                 Text("Device found", style = MaterialTheme.typography.titleMedium)
                 Text("${peer.deviceName} (${peer.deviceAddress})", style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+@Composable
+fun ConnectionStatusIcon(status: PeerStatus, isPersistent: Boolean) {
+    val icon = when {
+        status == PeerStatus.CONNECTED -> Icons.Default.Wifi
+        status == PeerStatus.NEARBY -> Icons.Default.Wifi
+        !isPersistent -> Icons.Default.LinkOff
+        else -> Icons.Default.Wifi
+    }
+
+    val color = when {
+        status == PeerStatus.CONNECTED -> MaterialTheme.colorScheme.primary
+        status == PeerStatus.NEARBY -> MaterialTheme.colorScheme.tertiary
+        !isPersistent -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.outline
+    }
+
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+        tint = color
+    )
+}
+
+@Composable
+fun ProximityBanner(status: PeerStatus, onClick: () -> Unit) {
+    if (status == PeerStatus.CONNECTED) return
+
+    val backgroundColor = if (status == PeerStatus.NEARBY)
+        MaterialTheme.colorScheme.tertiaryContainer
+    else
+        MaterialTheme.colorScheme.surfaceVariant
+
+    val text = if (status == PeerStatus.NEARBY)
+        "Peer is in range. Tap to connect"
+    else
+        "Peer not in range"
+
+    Surface(
+        color = backgroundColor,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = status == PeerStatus.NEARBY) { onClick() }
+    ) {
+        Box(
+            modifier = Modifier.padding(vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = text, style = MaterialTheme.typography.labelMedium)
         }
     }
 }

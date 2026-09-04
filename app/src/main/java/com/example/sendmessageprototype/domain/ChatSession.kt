@@ -4,6 +4,7 @@ import com.example.sendmessageprototype.core.ConversationMeta
 import com.example.sendmessageprototype.core.DiscoveredPeer
 import com.example.sendmessageprototype.core.Message
 import com.example.sendmessageprototype.core.MessageType
+import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.core.TransportEvent
 import com.example.sendmessageprototype.core.User
 import com.example.sendmessageprototype.persistence.MessageDAO
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -41,11 +43,12 @@ class ChatSession(
         object IdentityRequired : SessionState()
         data class Ready(val localUser: User) : SessionState()
     }
+    var localUser: User? = null
+        private set
     private val _state = MutableStateFlow<SessionState>(SessionState.Loading)
     val state: StateFlow<SessionState> = _state.asStateFlow()
     private var isStarted = false
     private var heartbeat: Job? = null
-    private var localUser: User? = null
     private var peersManager: PeersManager? = null
     private var conversationsManager: ConversationsManager? = null
     private var outbox: OutboxProcessor? = null
@@ -156,7 +159,10 @@ class ChatSession(
         }
     }
 
-    fun discoverPeers(): Flow<List<DiscoveredPeer>> = transport.discoverPeers()
+    fun discoverPeers(): Flow<List<DiscoveredPeer>> {
+        stopDiscoveryCycle()
+        return transport.discoverPeers()
+    }
 
     fun connectToDevice(deviceAddress: String) {
         activeUserConnection = true
@@ -165,6 +171,25 @@ class ChatSession(
             _connectingAddress.value = null
             activeUserConnection = false
         })
+    }
+
+    fun cancelConnectAttempt() {
+        transport.cancelConnect()
+        activeUserConnection = false
+        _connectingAddress.value = null
+        startDiscoveryCycle()
+    }
+
+    fun getPeerStatus(userID: String): Flow<PeerStatus> = combine(
+        peersManager!!.reachablePeers,
+        transport.discoverPeers(),
+    ) { reachableSet, discoveredList ->
+        if (reachableSet.contains(userID)) return@combine PeerStatus.CONNECTED
+        val user = peersManager?.savedPeers?.value?.find { it.userID == userID }
+        val isNearby = discoveredList.any { peer ->
+            peer.deviceAddress == user?.lastKnownDeviceAddress
+        }
+        if (isNearby) PeerStatus.NEARBY else PeerStatus.ABSENT
     }
 
     private fun onPeerIdentified(user: User) {

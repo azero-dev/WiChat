@@ -23,6 +23,10 @@ class DiscoveryViewModel(
         session.connectToDevice(address)
     }
 
+    fun refreshScan() {
+        session.discoverPeers()
+    }
+
     class Factory(private val session: ChatSession) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return DiscoveryViewModel(session) as T
