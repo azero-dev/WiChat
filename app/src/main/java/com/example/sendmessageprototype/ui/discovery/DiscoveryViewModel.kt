@@ -19,8 +19,8 @@ class DiscoveryViewModel(
             initialValue = emptyList()
         )
 
-    fun connectToDevice(address: String) {
-        session.connectToDevice(address)
+    fun connectToDevice(address: String): Boolean {
+        return session.connectToDevice(address)
     }
 
     fun refreshScan() {

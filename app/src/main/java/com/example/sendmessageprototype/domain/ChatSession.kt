@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import kotlinx.serialization.json.internal.decodeByReader
 import java.util.UUID
 
 class ChatSession(
@@ -164,13 +165,24 @@ class ChatSession(
         return transport.discoverPeers()
     }
 
-    fun connectToDevice(deviceAddress: String) {
+    fun connectToDevice(deviceAddress: String): Boolean {
+//        checks if already connected
+        if (transport.connectedDevice() == deviceAddress) {
+            return false
+        }
+//        checks if handshake exists
+        val existingUser = peersManager?.userIDOf(deviceAddress)
+        if (existingUser != null && peersManager?.isReachable(existingUser) == true) {
+            return false
+        }
+//        otherwise, connects
         activeUserConnection = true
         _connectingAddress.value = deviceAddress
         transport.connect(deviceAddress, onFailure = {
             _connectingAddress.value = null
             activeUserConnection = false
         })
+        return true
     }
 
     fun cancelConnectAttempt() {
@@ -280,13 +292,16 @@ class ChatSession(
         }
     }
 
-    private fun generateConversationID(userA: String, userB: String): String {
+    fun generateConversationID(userA: String, userB: String): String {
         return if (userA < userB) "${userA}_${userB}" else "${userB}_${userA}"
     }
+
+    fun userIDOf(deviceAddress: String): String? = peersManager?.userIDOf(deviceAddress)
 
     fun getConversationMetas(): Flow<List<ConversationMeta>> = conversationsManager?.getConversationMetas() ?: flowOf(emptyList())
     fun getSavedPeers(): StateFlow<Set<User>> = peersManager?.savedPeers ?: MutableStateFlow(emptySet())
     fun getMessageDAO(): MessageDAO = messageDAO
+    fun getConnectedDevice(): String? = transport.connectedDevice()
 
 //    identity
     private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress, isPersistent)

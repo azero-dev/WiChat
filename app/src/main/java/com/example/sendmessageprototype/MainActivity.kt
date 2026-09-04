@@ -251,7 +251,7 @@ fun AppNavigation(
             val readyState = sessionState as? ChatSession.SessionState.Ready
             LaunchedEffect(convID) {
                 if (readyState != null) {
-                    val peerID = convID.split("_").firstOrNull() { it != readyState.localUser.userID }
+                    val peerID = convID.split("_").firstOrNull { it != readyState.localUser.userID }
                     peerID?.let { session.requestChatConnection(it) }
                 }
             }
@@ -339,9 +339,11 @@ fun MainScreen(
     }
     if (showDiscovery) {
         DiscoveryBottomSheet(
+            session = session,
             viewModel = viewModel(
                 factory = DiscoveryViewModel.Factory(session)
             ),
+            onNavigateToChat = { convID -> onConversationClick(convID)},
             onDismiss = {
                 showDiscovery = false
                 session.startDiscoveryCycle()
@@ -531,7 +533,9 @@ fun WelcomeScreen(nameEntered: (String) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DiscoveryBottomSheet(
+    session: ChatSession,
     viewModel: DiscoveryViewModel,
+    onNavigateToChat: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     val peers by viewModel.discoveredPeers.collectAsState()
@@ -565,9 +569,20 @@ fun DiscoveryBottomSheet(
             } else {
                 LazyColumn { 
                     items(peers) { peer ->
-                        DiscoveryPeerCard(peer) {
-                            viewModel.connectToDevice(peer.deviceAddress)
-                            onDismiss()
+                        val isConnected = session.getConnectedDevice() == peer.deviceAddress
+                        DiscoveryPeerCard(peer, isConnected) {
+                            val started = viewModel.connectToDevice(peer.deviceAddress)
+                            if (started) {
+                                onDismiss()
+                            } else {
+                                val userID = session.userIDOf(peer.deviceAddress)
+                                val localUser = session.localUser
+                                if (userID != null && localUser != null) {
+                                    val convID = session.generateConversationID(localUser.userID, userID)
+                                    onNavigateToChat(convID)
+                                    onDismiss()
+                                }
+                            }
                         }
                     }
                 }
@@ -634,6 +649,7 @@ fun ConversationCard(
 @Composable
 fun DiscoveryPeerCard(
     peer: DiscoveredPeer,
+    isConnected: Boolean,
     onClick: () -> Unit
 ) {
     Card(
@@ -642,17 +658,24 @@ fun DiscoveryPeerCard(
             .padding(vertical = 4.dp)
             .clickable { onClick() },
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (isConnected)
+                MaterialTheme.colorScheme.primaryContainer
+            else
+                MaterialTheme.colorScheme.surfaceVariant
         )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Wifi, contentDescription = null)
+            Icon(
+                imageVector = if (isConnected) Icons.Default.DoneAll else Icons.Default.Wifi,
+                contentDescription = null)
             Spacer(Modifier.width(16.dp))
             Column { 
-                Text("Device found", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (isConnected) "Already connected" else "Device found",
+                    style = MaterialTheme.typography.titleMedium)
                 Text("${peer.deviceName} (${peer.deviceAddress})", style = MaterialTheme.typography.bodySmall)
             }
         }
