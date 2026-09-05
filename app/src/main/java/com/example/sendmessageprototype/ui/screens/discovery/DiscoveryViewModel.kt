@@ -1,4 +1,4 @@
-package com.example.sendmessageprototype.ui.discovery
+package com.example.sendmessageprototype.ui.screens.discovery
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

@@ -1,4 +1,4 @@
-package com.example.sendmessageprototype.ui.chat
+package com.example.sendmessageprototype.ui.screens.chat
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

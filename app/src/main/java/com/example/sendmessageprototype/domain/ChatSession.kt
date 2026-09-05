@@ -68,6 +68,8 @@ class ChatSession(
     private var activeUserConnection: Boolean = false
     private val _connectingAddress = MutableStateFlow<String?>(null)
     val connectingAddress: StateFlow<String?> = _connectingAddress.asStateFlow()
+    private val _navigationEvents = MutableSharedFlow<String>()
+    val navigationEvents = _navigationEvents.asSharedFlow()
 
     fun start() {
         if (isStarted) return
@@ -228,7 +230,15 @@ class ChatSession(
                 val isPersistent = transport.isCurrentConnectionPersistent()
                 peersManager?.updateIsPersistent(user.userID, isPersistent)
             }
+//            send user to chat of new discovered peer
+            if (activeUserConnection && _connectingAddress.value == user.lastKnownDeviceAddress) {
+                localUser?.let { local ->
+                    val convID = generateConversationID(local.userID, user.userID)
+                    _navigationEvents.emit(convID)
+                }
+            }
             _connectingAddress.value = null
+            activeUserConnection = false
         }
     }
 
