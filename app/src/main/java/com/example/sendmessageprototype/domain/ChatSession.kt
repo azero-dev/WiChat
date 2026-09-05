@@ -4,6 +4,7 @@ import com.example.sendmessageprototype.core.AppConfig
 import com.example.sendmessageprototype.core.ConversationMeta
 import com.example.sendmessageprototype.core.DiscoveredPeer
 import com.example.sendmessageprototype.core.Message
+import com.example.sendmessageprototype.core.MessageInTransit
 import com.example.sendmessageprototype.core.MessageType
 import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.core.TransportEvent
@@ -291,6 +292,16 @@ class ChatSession(
             outbox?.enqueue(message)
             outbox?.trySend()
         }
+    }
+
+    suspend fun deleteMessageLocal(messageID: String) {
+        outbox?.remove(messageID)
+        messageDAO.remove(messageID)
+    }
+
+//    used to retrieve info like ttl for the message info panel
+    fun getMessageInTransit(messageID: String): MessageInTransit? {
+        return outbox?.getMessageInTransit(messageID)
     }
 
     fun requestChatConnection(peerID: String) {

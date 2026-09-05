@@ -3,6 +3,8 @@ package com.example.sendmessageprototype.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.sendmessageprototype.core.MessageInTransit
 import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.domain.ChatSession
 import com.example.sendmessageprototype.persistence.Converters
@@ -12,6 +14,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class ChatViewModel(
     val session: ChatSession,
@@ -34,6 +37,17 @@ class ChatViewModel(
         if (text.isNotBlank() && peerID.isNotEmpty()) {
             session.sendMessage(text, peerID)
         }
+    }
+
+    fun deleteMessage(messageID: String) {
+        viewModelScope.launch {
+            session.deleteMessageLocal(messageID)
+        }
+    }
+
+//    used to retrieve info like ttl for the message info panel
+    fun getTransitInfo(messageID: String): MessageInTransit? {
+        return session.getMessageInTransit(messageID)
     }
 
     fun connectManually() {

@@ -110,6 +110,10 @@ class OutboxProcessor(
         }
     }
 
+    fun getMessageInTransit(messageID: String): MessageInTransit? {
+        return messages[messageID]
+    }
+
     private fun MessageInTransit.toEntity() = OutboxEntity(
         messageID = this.messageID,
         ttl = this.ttl,

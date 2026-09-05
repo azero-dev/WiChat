@@ -1,6 +1,7 @@
 package com.example.sendmessageprototype
 
 import android.Manifest
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -15,6 +16,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,6 +48,8 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -53,10 +58,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -64,6 +71,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -73,6 +81,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +89,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.tooling.preview.Preview
@@ -104,6 +116,8 @@ import com.example.sendmessageprototype.transport.WiFiDirectTransport
 import com.example.sendmessageprototype.ui.chat.ChatViewModel
 import com.example.sendmessageprototype.ui.discovery.DiscoveryViewModel
 import com.example.sendmessageprototype.ui.theme.SendMessagePrototypeTheme
+import com.example.sendmessageprototype.core.MessageInTransit
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private var chatService: ChatService? = null
@@ -385,6 +399,10 @@ fun ChatScreen(
     val savedPeers by viewModel.session.getSavedPeers().collectAsState()
     val peerID = viewModel.conversationID.split("_").firstOrNull { it != localUserID } ?: "Unknown"
     val peer = savedPeers.find { it.userID == peerID }
+    var selectedMessage by remember { mutableStateOf<MessageEntity?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
@@ -449,21 +467,56 @@ fun ChatScreen(
                 contentPadding = PaddingValues(8.dp)
             ) {
                 items(messages) { message ->
-                    MessageBubble(message, isMine = message.senderID == localUserID)
+                    MessageBubble(
+                        message = message,
+                        isMine = message.senderID == localUserID,
+                        onLongClick = { selectedMessage = message },
+                    )
                 }
             }
         }
     }
+    selectedMessage?.let { message ->
+        MessageOptionSheet(
+            message = message,
+            transitInfo = viewModel.getTransitInfo(message.messageID),
+            onCopy = {
+                val content = String(message.content)
+                scope.launch {
+                    val clipData = ClipData.newPlainText("WiChat message", content)
+                    clipboard.setClipEntry(ClipEntry(clipData))
+                }
+                selectedMessage = null
+            },
+            onDelete = { showDeleteDialog = true },
+            onDismiss = { selectedMessage = null }
+        )
+    }
+    if (showDeleteDialog) {
+        DeleteConfirmationDialog(
+            onConfirm = {
+                selectedMessage?.let { viewModel.deleteMessage(it.messageID) }
+                showDeleteDialog = false
+                selectedMessage = null
+            },
+            onDismiss = { showDeleteDialog = false }
+        )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MessageBubble(message: MessageEntity, isMine: Boolean) {
+fun MessageBubble(
+    message: MessageEntity,
+    isMine: Boolean,
+    onLongClick: () -> Unit,
+) {
     val alignment = if (isMine) Alignment.CenterEnd else Alignment.CenterStart
     val color = if (isMine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
     val shape = if (isMine) {
-        MaterialTheme.shapes.medium.copy(bottomEnd = androidx.compose.foundation.shape.CornerSize(0.dp))
+        MaterialTheme.shapes.medium.copy(bottomEnd = CornerSize(0.dp))
     } else {
-        MaterialTheme.shapes.medium.copy(bottomStart = androidx.compose.foundation.shape.CornerSize(0.dp))
+        MaterialTheme.shapes.medium.copy(bottomStart = CornerSize(0.dp))
     }
 
     Box(modifier = Modifier
@@ -474,7 +527,11 @@ fun MessageBubble(message: MessageEntity, isMine: Boolean) {
         Card(
             shape = shape,
             colors = CardDefaults.cardColors(containerColor = color),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+            modifier = Modifier.combinedClickable(
+                onClick = {},
+                onLongClick = onLongClick
+            )
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
@@ -844,3 +901,93 @@ fun ProximityBanner(status: PeerStatus, onClick: () -> Unit) {
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MessageOptionSheet(
+    message: MessageEntity,
+    transitInfo: MessageInTransit?,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismiss) {
+        Column(modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)) {
+            Text("Message options", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(16.dp))
+            if (transitInfo != null) {
+                Text(
+                    "Transport info",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    "TTL: ${transitInfo.ttl}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "Retry counter: ${transitInfo.retryCounter}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            }
+            ListItem(
+                headlineContent = { Text("Copy text") },
+                leadingContent = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                modifier = Modifier.clickable { onCopy() },
+            )
+            ListItem(
+                headlineContent = { Text("Delete message", color = MaterialTheme.colorScheme.error) },
+                leadingContent = { Icon(
+                    Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                ) },
+                modifier = Modifier.clickable { onDelete() },
+            )
+        }
+    }
+}
+
+@Composable
+
+fun DeleteConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete message") },
+        text = { Text("Are you sure you want to delete this message? It won't be deleted on the other device.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Delete", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
