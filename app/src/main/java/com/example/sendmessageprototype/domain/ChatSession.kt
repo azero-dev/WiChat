@@ -326,6 +326,17 @@ class ChatSession(
         }
     }
 
+//    no peerID: clear conversation. peerID: delete contact too (full delete)
+    fun deleteConversation(conversationID: String, peerID: String? = null) {
+        scope.launch {
+            outbox?.removeByConversation(conversationID)
+            conversationsManager?.removeConversation(conversationID)
+            peerID?.let {
+                peersManager?.removeSavedPeer(it)
+            }
+        }
+    }
+
     fun toggleNotifications(enabled: Boolean) {
         scope.launch {
             configDAO.saveConfig(ConfigEntity(

@@ -69,6 +69,13 @@ class OutboxProcessor(
         return removed
     }
 
+    suspend fun removeByConversation(conversationID: String) {
+        val toRemove = messages.values.filter { it.payload.conversationID == conversationID }.toList()
+        toRemove.forEach { envelope ->
+            remove(envelope.messageID)
+        }
+    }
+
     suspend fun trySend() {
         val deviceAddress = transport.connectedDevice() ?: return
         val connectedUserID = peers.userIDOf(deviceAddress) ?: return

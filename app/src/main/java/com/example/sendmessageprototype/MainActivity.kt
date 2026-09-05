@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.materialIcon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -68,10 +69,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -110,7 +107,9 @@ import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import androidx.room.Room
 import androidx.room.util.TableInfo
+import com.example.sendmessageprototype.core.ConversationMeta
 import com.example.sendmessageprototype.core.DiscoveredPeer
+import com.example.sendmessageprototype.core.User
 import com.example.sendmessageprototype.core.PeerStatus
 import com.example.sendmessageprototype.domain.ChatSession
 import com.example.sendmessageprototype.persistence.AppDatabase
@@ -303,6 +302,9 @@ fun MainScreen(
     var showDiscovery by remember { mutableStateOf(false) }
     val connectingAddress by session.connectingAddress.collectAsState()
     var showProfile by remember { mutableStateOf(false) }
+    var selectedMeta by remember { mutableStateOf<ConversationMeta?>(null) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -361,7 +363,8 @@ fun MainScreen(
                             lastTime = meta.lastMessageAt,
                             status = status,
                             isPersistent = peer?.isPersistent ?: false,
-                            onClick = { onConversationClick(meta.conversationID) }
+                            onClick = { onConversationClick(meta.conversationID) },
+                            onLongClick = { selectedMeta = meta }
                         )
                     }
                 }
@@ -385,6 +388,39 @@ fun MainScreen(
         ProfileBottomSheet(
             session = session,
             onDismiss = { showProfile = false }
+        )
+    }
+    selectedMeta?.let { meta ->
+        val peer = savedPeers.find { it.userID == meta.peerID } ?: return@let
+        ConversationOptionsSheet(
+            peer = peer,
+            onClearHistory = { showClearDialog = true },
+            onDeleteContact = { showDeleteDialog = true},
+            onDismiss = { selectedMeta = null }
+        )
+    }
+    if (showClearDialog) {
+        ConfirmationDialog(
+            title = "Clear history",
+            textBody = "Are you sure you want to clear this conversation's history? It won't be deleted on the other device.",
+            onConfirm = {
+                selectedMeta?.let { session.deleteConversation(it.conversationID) }
+                showClearDialog = false
+                selectedMeta = null
+            },
+            onDismiss = { showClearDialog = false }
+        )
+    }
+    if (showDeleteDialog) {
+        ConfirmationDialog(
+            title = "Delete contact",
+            textBody = "Remove this contact and all messages? It won't be deleted on the other device.",
+            onConfirm = {
+                selectedMeta?.let { session.deleteConversation(it.conversationID, it.peerID) }
+                showDeleteDialog = false
+                selectedMeta = null
+            },
+            onDismiss = { showDeleteDialog = false }
         )
     }
 }
@@ -497,7 +533,9 @@ fun ChatScreen(
         )
     }
     if (showDeleteDialog) {
-        DeleteConfirmationDialog(
+        ConfirmationDialog(
+            title = "Delete message",
+            textBody = "Are you sure you want to delete this message? It won't be deleted on the other device.",
             onConfirm = {
                 selectedMessage?.let { viewModel.deleteMessage(it.messageID) }
                 showDeleteDialog = false
@@ -769,7 +807,8 @@ fun ConversationCard(
     lastTime: Long,
     status: PeerStatus,
     isPersistent: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val fullText = String(lastMessageText)
     val previewText = when {
@@ -782,7 +821,10 @@ fun ConversationCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp)
-            .clickable { onClick() },
+            .combinedClickable(
+                onClick = { onClick() },
+                onLongClick = onLongClick,
+            ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         ),
@@ -811,7 +853,8 @@ fun ConversationCard(
                 )
             }
             Text(
-                text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(lastTime),
+                text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    .format(lastTime),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.outline,
             )
@@ -957,19 +1000,86 @@ fun MessageOptionSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ConversationOptionsSheet(
+    peer: User,
+    onClearHistory: () -> Unit,
+    onDeleteContact: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)
+        )
+        {
+            Text(peer.userName, style = MaterialTheme.typography.headlineSmall)
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "User ID", style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                peer.userID, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Last known Address", style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                peer.lastKnownDeviceAddress ?: "Unknown",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            HorizontalDivider(Modifier.padding(vertical = 16.dp))
+            ListItem(
+                headlineContent = { Text("Clear history") },
+                leadingContent = {
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = null
+                    )
+                },
+                modifier = Modifier.clickable { onClearHistory() }
+            )
+            ListItem(
+                headlineContent = {
+                    Text(
+                        "Delete contact and chat",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
+                leadingContent = {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                modifier = Modifier.clickable { onDeleteContact() }
+            )
+        }
+    }
+}
+
 @Composable
 
-fun DeleteConfirmationDialog(
+fun ConfirmationDialog(
+    title: String,
+    textBody: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Delete message") },
-        text = { Text("Are you sure you want to delete this message? It won't be deleted on the other device.") },
+        title = { Text(title) },
+        text = { Text(textBody) },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+                Text("Confirm", color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
