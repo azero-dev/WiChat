@@ -9,6 +9,7 @@ class MessageInTransit(
     var ttl: Int = 20,
     var retryCounter: Int = 0,
     var lastAttemptAt: Long = 0,
+    val createdAt: Long = System.currentTimeMillis(),
     val alreadySentTo: MutableSet<String> = mutableSetOf(),
 ) {
     fun decrementTtl() {

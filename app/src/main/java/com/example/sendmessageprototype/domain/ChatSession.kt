@@ -137,6 +137,7 @@ class ChatSession(
                 peersManager?.userIDOf(event.deviceAddress)?.let { userID ->
                     peersManager?.addReachablePeer(userID)
                     _connectingAddress.value = null
+                    scope.launch { outbox?.trySend() }
                 }
             }
             is TransportEvent.PeerDisconnected -> {
@@ -165,6 +166,7 @@ class ChatSession(
                 } else {
                     peersManager?.userIDOf(fromDevice)?.let { userID ->
                         incoming?.handleIncoming(event.envelope, userID)
+                        scope.launch { outbox?.trySend() }
                     }
                 }
             }

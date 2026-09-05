@@ -38,6 +38,7 @@ data class OutboxEntity(
     val ttl: Int,
     val retryCounter: Int,
     val lastAttemptAt: Long,
+    val createdAt: Long,
     val alreadySentTo: String,
 )
 

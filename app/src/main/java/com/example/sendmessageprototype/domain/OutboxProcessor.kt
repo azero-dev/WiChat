@@ -24,6 +24,8 @@ class OutboxProcessor(
 ) {
     private val messages = mutableMapOf<String, MessageInTransit>()
     private val relayMessages = mutableMapOf<String, MessageInTransit>()
+    private val MAX_LIFETIME_MS = 24 * 60 * 60 * 1000
+    private val MAX_TRIES = 10
 
     suspend fun loadPending() {
         val pendingEntities = outboxDAO.getAllPending()
@@ -37,6 +39,7 @@ class OutboxProcessor(
                     ttl = entity.ttl,
                     retryCounter = entity.retryCounter,
                     lastAttemptAt = entity.lastAttemptAt,
+                    createdAt = entity.createdAt,
                     alreadySentTo = Json.decodeFromString<MutableSet<String>>(entity.alreadySentTo)
                 )
                 messages[entity.messageID] = envelope
@@ -69,7 +72,12 @@ class OutboxProcessor(
     suspend fun trySend() {
         val deviceAddress = transport.connectedDevice() ?: return
         val connectedUserID = peers.userIDOf(deviceAddress) ?: return
-        val allPending = (messages.values + relayMessages.values)
+        val now = System.currentTimeMillis()
+//        drop expired messages
+        messages.values.filter { now - it.createdAt > MAX_LIFETIME_MS }.forEach { expired ->
+            handlePermanentFailure(expired)
+        }
+        val allPending = (messages.values + relayMessages.values).toList()
         allPending.forEach { envelope ->
             if (shouldAttemptSend(envelope, connectedUserID)) {
                 val result = transport.send(envelope)
@@ -90,13 +98,25 @@ class OutboxProcessor(
     private fun shouldAttemptSend(envelope: MessageInTransit, connectedUserID: String): Boolean {
         if (envelope.alreadySentTo.contains(connectedUserID)) return false
         val now = System.currentTimeMillis()
-        if (now - envelope.lastAttemptAt < 10000 && envelope.payload.type == MessageType.TEXT) return false
+        val waitTime = 1000L * (envelope.retryCounter +1)
+        if (now - envelope.lastAttemptAt < waitTime && envelope.payload.type == MessageType.TEXT) {
+            return false
+        }
         return true
+    }
+
+    private suspend fun handlePermanentFailure(envelope: MessageInTransit) {
+        remove(envelope.messageID)
+        conversations.updateMessageState(
+            envelope.messageID,
+            envelope.payload.conversationID,
+            MessageState.FAILED
+        )
     }
 
     private suspend fun handleSendError(envelope: MessageInTransit) {
         envelope.recordFailedAttempt()
-        if (envelope.retryCounter >= 10) {
+        if (envelope.retryCounter >= MAX_TRIES) {
             remove(envelope.messageID)
             conversations.updateMessageState(
                 envelope.messageID,
@@ -119,6 +139,7 @@ class OutboxProcessor(
         ttl = this.ttl,
         retryCounter = this.retryCounter,
         lastAttemptAt = this.lastAttemptAt,
+        createdAt = this.createdAt,
         alreadySentTo = Json.encodeToString(this.alreadySentTo)
     )
 
