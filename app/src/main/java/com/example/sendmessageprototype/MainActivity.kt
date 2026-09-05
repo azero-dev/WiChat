@@ -68,6 +68,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -353,7 +357,7 @@ fun MainScreen(
                         val status by session.getPeerStatus(meta.peerID).collectAsState(initial = PeerStatus.ABSENT)
                         ConversationCard(
                             name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
-                            lastMessageText = String(meta.lastMessageText),
+                            lastMessageText = meta.lastMessageText,
                             lastTime = meta.lastMessageAt,
                             status = status,
                             isPersistent = peer?.isPersistent ?: false,
@@ -761,17 +765,19 @@ fun ProfileToggle(
 @Composable
 fun ConversationCard(
     name: String,
-    lastMessageText: String,
+    lastMessageText: ByteArray,
     lastTime: Long,
     status: PeerStatus,
     isPersistent: Boolean,
     onClick: () -> Unit
 ) {
-    val previewText = if (lastMessageText.length > 30) {
-        lastMessageText.take(30) + "..."
-    } else {
-        lastMessageText
+    val fullText = String(lastMessageText)
+    val previewText = when {
+        fullText.isEmpty() -> "No messages yet"
+        fullText.length > 30 -> fullText.take(30) + "..."
+        else -> fullText
     }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()

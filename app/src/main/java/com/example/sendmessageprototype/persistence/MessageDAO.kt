@@ -29,13 +29,23 @@ interface MessageDAO {
     suspend fun getMessageByID(messageId: String): MessageEntity?
 
     @Query("""
-        SELECT conversationID, 
-        CASE WHEN senderID = :localID THEN receiverID ELSE senderID END as peerID,
-        MAX(timestamp) as lastMessageAt,
-        (SELECT content FROM messages WHERE conversationID = m.conversationID ORDER BY timestamp DESC LIMIT 1) as lastMessageText
-        FROM messages m
-        GROUP BY conversationID
-        ORDER BY lastMessageAt DESC
+        SELECT
+            u.userID AS peerID,
+            CASE WHEN :localID < u.userID THEN :localID || '_' || u.userID ELSE u.userID || '_' || :localID END AS conversationID,
+            COALESCE(m.timestamp, 0) as lastMessageAt,
+            COALESCE(m.content, x'') as lastMessageText
+        FROM users u
+        LEFT JOIN (
+            SELECT conversationID, content, timestamp
+            FROM messages
+            WHERE (conversationID, timestamp) IN (
+                SELECT conversationID, MAX(timestamp)
+                FROM messages
+                GROUP BY conversationID
+            )
+        ) m ON (m.conversationID = (CASE WHEN :localID < u.userID THEN :localID || '_' || u.userID ELSE u.userID || '_' || :localID END))
+        WHERE u.isLocal = 0
+        ORDER BY lastMessageAt DESC, u.userName ASC
     """)
     fun getConversationMetas(localID: String): Flow<List<ConversationMeta>>
 }
