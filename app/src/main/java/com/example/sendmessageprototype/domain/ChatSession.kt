@@ -92,7 +92,7 @@ class ChatSession(
     fun stop() {
         stopDiscoveryCycle()
         stopHeartbeat()
-        transport.disconnect()
+        transport.stopTransport(config.value.isAdvancedCleanupEnabled)
         scope.cancel()
         isStarted = false
     }
@@ -126,13 +126,9 @@ class ChatSession(
         configDAO.getConfig().onEach { entity ->
             entity?.let {
                 val oldConfig = _config.value
-                _config.value = AppConfig(it.notificationsEnabled, it.isInactiveMode)
+                _config.value = AppConfig(it.notificationsEnabled, it.isInactiveMode, it.isAdvancedCleanupEnabled)
                 if (it.isInactiveMode != oldConfig.isInactiveMode) {
-                    if (it.isInactiveMode) {
-                        hibernate()
-                    } else {
-                        wakeUp()
-                    }
+                    if (it.isInactiveMode) hibernate() else wakeUp()
                 }
             }
         }.launchIn(scope)
@@ -142,7 +138,7 @@ class ChatSession(
     private fun hibernate() {
         stopDiscoveryCycle()
         stopHeartbeat()
-        transport.stopTransport()
+        transport.stopTransport(config.value.isAdvancedCleanupEnabled)
         peersManager?.clearReachable()
         localUser?.let { _state.value = SessionState.Hibernating(it) }
     }
@@ -391,7 +387,8 @@ class ChatSession(
         scope.launch {
             configDAO.saveConfig(ConfigEntity(
                 notificationsEnabled = enabled,
-                isInactiveMode = _config.value.isInactiveMode
+                isInactiveMode = _config.value.isInactiveMode,
+                isAdvancedCleanupEnabled = _config.value.isAdvancedCleanupEnabled,
             ))
         }
     }
@@ -400,7 +397,18 @@ class ChatSession(
         scope.launch {
             configDAO.saveConfig(ConfigEntity(
                 notificationsEnabled = _config.value.notificationsEnabled,
-                isInactiveMode = enabled
+                isInactiveMode = enabled,
+                isAdvancedCleanupEnabled = _config.value.isAdvancedCleanupEnabled,
+            ))
+        }
+    }
+
+    fun toggleAdvancedCleanup(enabled: Boolean) {
+        scope.launch {
+            configDAO.saveConfig(ConfigEntity(
+                notificationsEnabled = _config.value.notificationsEnabled,
+                isInactiveMode = _config.value.isInactiveMode,
+                isAdvancedCleanupEnabled = enabled,
             ))
         }
     }

@@ -52,7 +52,7 @@ fun ProximityBanner(status: PeerStatus, onClick: () -> Unit) {
         MaterialTheme.colorScheme.surfaceVariant
 
     val text = if (status == PeerStatus.NEARBY)
-        "Peer is in range. Tap to connect"
+        "Peer is in range! Connecting..."
     else
         "Peer not in range"
 

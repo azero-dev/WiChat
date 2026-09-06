@@ -60,8 +60,8 @@ class WiFiDirectTransport(
         registerReceiver()
     }
 
-    fun stopTransport() {
-        disconnect()
+    fun stopTransport(shouldCleanup: Boolean = false) {
+        disconnect(shouldCleanup)
         try {
             serverSocket?.close()
             serverSocket = null
@@ -96,12 +96,17 @@ class WiFiDirectTransport(
         })
     }
 
-    fun disconnect() {
+    fun disconnect(shouldCleanup: Boolean = false) {
         val macToDisconnect = remotePeerMac ?: "unknown"
         manager.removeGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {}
             override fun onFailure(reason: Int) {}
         })
+//        persistent groups clean up if enabled
+        if (shouldCleanup) {
+            ReflectionUtils.clearPersistentGroups(manager, channel)
+        }
+//        and rest of normal disconnection process
         closeResources()
         remotePeerMac = null
         remoteClientIP = null

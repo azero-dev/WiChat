@@ -13,6 +13,7 @@ data class ConfigEntity(
     @PrimaryKey val id: Int = 1,
     val notificationsEnabled: Boolean,
     val isInactiveMode: Boolean,
+    val isAdvancedCleanupEnabled: Boolean,
 )
 
 @Dao

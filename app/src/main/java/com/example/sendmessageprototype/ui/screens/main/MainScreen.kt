@@ -74,6 +74,7 @@ fun MainScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     val sessionState by session.state.collectAsState()
     val isHibernating = sessionState is ChatSession.SessionState.Hibernating
+    var showAdvancedCleanupDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -164,7 +165,8 @@ fun MainScreen(
     if (showProfile) {
         ProfileBottomSheet(
             session = session,
-            onDismiss = { showProfile = false }
+            onAdvanceCleanupClick = { showAdvancedCleanupDialog = true },
+            onDismiss = { showProfile = false },
         )
     }
     selectedMeta?.let { meta ->
@@ -198,6 +200,17 @@ fun MainScreen(
                 selectedMeta = null
             },
             onDismiss = { showDeleteDialog = false }
+        )
+    }
+    if (showAdvancedCleanupDialog) {
+        ConfirmationDialog(
+            title = "Warning: Advanced fix",
+            textBody = "This mode uses experimental features to clear Android Wifi cache. It may be used to fix reconnection issues, but it will delete ALL remembered Wifi Direct Persistent groups on your device.",
+            onConfirm = {
+                session.toggleAdvancedCleanup(true)
+                showAdvancedCleanupDialog = false
+            },
+            onDismiss = { showAdvancedCleanupDialog = false }
         )
     }
 }
@@ -242,6 +255,7 @@ fun ConversationCard(
 @Composable
 fun ProfileBottomSheet(
     session: ChatSession,
+    onAdvanceCleanupClick: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sessionState by session.state.collectAsState()
@@ -287,6 +301,18 @@ fun ProfileBottomSheet(
                 config.isInactiveMode
             ) {
                 session.toggleInactiveMode(it)
+            }
+            Spacer(Modifier.height(16.dp))
+            ProfileToggle(
+                title = "Advanced connection fix",
+                subtitle = "Delete Android's Persistent Groups. CAUTION: If you have devices connected to your phone via Wifi Direct, this will delete them!",
+                checked = config.isAdvancedCleanupEnabled,
+            ) { enabled ->
+                if (enabled) {
+                    onAdvanceCleanupClick()
+                } else {
+                    session.toggleAdvancedCleanup(false)
+                }
             }
         }
     )
