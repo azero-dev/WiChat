@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.sendmessageprototype"
+    namespace = "com.example.WiChat"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -14,7 +14,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.sendmessageprototype"
+        applicationId = "com.example.WiChat"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
@@ -24,6 +24,10 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
         release {
             optimization {
                 enable = false
@@ -56,6 +60,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.core.splashscreen)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

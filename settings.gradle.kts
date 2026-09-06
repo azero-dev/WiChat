@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Send message prototype"
+rootProject.name = "WiChat"
 include(":app")
  
