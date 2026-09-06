@@ -49,6 +49,7 @@ class ChatSession(
         object Loading : SessionState()
         object IdentityRequired : SessionState()
         data class Ready(val localUser: User) : SessionState()
+        data class Hibernating(val localUser: User) : SessionState()
     }
     var localUser: User? = null
         private set
@@ -77,6 +78,10 @@ class ChatSession(
         scope.launch {
             val entity = userDAO.getLocalUser()
             if (entity != null) {
+                val configEntity = configDAO.getConfig().firstOrNull()
+                if (configEntity?.isInactiveMode != true) {
+                    transport.startTransport()
+                }
                 setupFullSession(entity.toDomain())
             } else {
                 _state.value = SessionState.IdentityRequired
@@ -99,6 +104,7 @@ class ChatSession(
         )
         scope.launch {
             userDAO.save(newUser.toEntity(isLocal = true))
+            transport.startTransport()
             setupFullSession(newUser)
         }
     }
@@ -119,10 +125,40 @@ class ChatSession(
         _state.value = SessionState.Ready(user)
         configDAO.getConfig().onEach { entity ->
             entity?.let {
+                val oldConfig = _config.value
                 _config.value = AppConfig(it.notificationsEnabled, it.isInactiveMode)
+                if (it.isInactiveMode != oldConfig.isInactiveMode) {
+                    if (it.isInactiveMode) {
+                        hibernate()
+                    } else {
+                        wakeUp()
+                    }
+                }
             }
         }.launchIn(scope)
-        startDiscoveryCycle()
+        wakeUp()
+    }
+
+    private fun hibernate() {
+        stopDiscoveryCycle()
+        stopHeartbeat()
+        transport.stopTransport()
+        peersManager?.clearReachable()
+        localUser?.let { _state.value = SessionState.Hibernating(it) }
+    }
+
+    private fun wakeUp() {
+        if (_state.value is SessionState.Ready && !config.value.isInactiveMode) return
+        if (config.value.isInactiveMode) {
+            localUser?.let { _state.value = SessionState.Hibernating(it) }
+            return
+        }
+        scope.launch {
+            transport.startTransport()
+            peersManager?.loadSavedPeers()
+            _state.value = SessionState.Ready(localUser ?: return@launch)
+            startDiscoveryCycle()
+        }
     }
 
     private fun launchEventCollectors() {
@@ -332,7 +368,11 @@ class ChatSession(
         user.updateUserName(newName)
         scope.launch {
             userDAO.update(user.toEntity(isLocal = true))
-            _state.value = SessionState.Ready(user)
+            if (_state.value is SessionState.Hibernating) {
+                _state.value = SessionState.Hibernating(user)
+            } else {
+                _state.value = SessionState.Ready(user)
+            }
         }
     }
 

@@ -160,7 +160,8 @@ fun AppNavigation(
                     popUpTo("welcome") { inclusive = true }
                 }
             }
-            is ChatSession.SessionState.Ready -> {
+            is ChatSession.SessionState.Ready,
+            is ChatSession.SessionState.Hibernating -> {
                 navController.navigate("main") {
                     popUpTo(0) { inclusive = true }
                 }

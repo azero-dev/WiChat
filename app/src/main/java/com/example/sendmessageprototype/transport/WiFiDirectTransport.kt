@@ -55,14 +55,32 @@ class WiFiDirectTransport(
     private var receiver: WifiDirectBroadcastReceiver? = null
     private var lastConnectionIsPersistent: Boolean = false
 
-    init {
+    fun startTransport() {
         startSocketServer()
         registerReceiver()
+    }
+
+    fun stopTransport() {
+        disconnect()
+        try {
+            serverSocket?.close()
+            serverSocket = null
+        } catch (e: Exception) { e.printStackTrace()
+        }
+        try {
+            receiver?.let { context.unregisterReceiver(it) }
+            receiver = null
+        } catch (e: Exception) { e.printStackTrace()
+        }
     }
 
     fun discoverPeers(): Flow<List<DiscoveredPeer>> {
         manager.discoverPeers(channel, null)
         return _discoveredPeers.asStateFlow()
+    }
+
+    fun clearDiscovered() {
+        _discoveredPeers.value = emptyList()
     }
 
     fun connect(deviceAddress: String, onFailure: (() -> Unit)? = null) {

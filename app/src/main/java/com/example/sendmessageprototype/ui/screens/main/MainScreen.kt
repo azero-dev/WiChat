@@ -72,6 +72,8 @@ fun MainScreen(
     var selectedMeta by remember { mutableStateOf<ConversationMeta?>(null) }
     var showClearDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val sessionState by session.state.collectAsState()
+    val isHibernating = sessionState is ChatSession.SessionState.Hibernating
 
     Scaffold(
         topBar = {
@@ -85,54 +87,60 @@ fun MainScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showDiscovery = true }) {
-                Icon(Icons.Default.Add, contentDescription = "New chat")
+            if (!isHibernating) {
+                FloatingActionButton(onClick = { showDiscovery = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "New chat")
+                }
             }
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (connectingAddress != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.secondaryContainer)
-                        .clickable { session.cancelConnectAttempt() }
-                        .padding(8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Connecting... (Tap to cancel)",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
+            if (isHibernating) {
+                HibernationBanner(onProfileClick = { showProfile = true })
+            } else {
+                if (connectingAddress != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.secondaryContainer)
+                            .clickable { session.cancelConnectAttempt() }
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Connecting... (Tap to cancel)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
                     }
                 }
-            }
-            if (conversations.isEmpty()) {
-                Box(Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center) {
-                    Text("Tap on + to start a new one")
-                }
-            } else {
-                LazyColumn(modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                ) {
-                    items(conversations) { meta ->
-                        val peer = savedPeers.find { it.userID == meta.peerID }
-                        val status by session.getPeerStatus(meta.peerID).collectAsState(initial = PeerStatus.ABSENT)
-                        ConversationCard(
-                            name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
-                            lastMessageText = meta.lastMessageText,
-                            lastTime = meta.lastMessageAt,
-                            status = status,
-                            isPersistent = peer?.isPersistent ?: false,
-                            onClick = { onConversationClick(meta.conversationID) },
-                            onLongClick = { selectedMeta = meta }
-                        )
+                if (conversations.isEmpty()) {
+                    Box(Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center) {
+                        Text("Tap on + to start a new one")
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                    ) {
+                        items(conversations) { meta ->
+                            val peer = savedPeers.find { it.userID == meta.peerID }
+                            val status by session.getPeerStatus(meta.peerID).collectAsState(initial = PeerStatus.ABSENT)
+                            ConversationCard(
+                                name = peer?.userName ?: "Unknown (${meta.peerID.take(5)})",
+                                lastMessageText = meta.lastMessageText,
+                                lastTime = meta.lastMessageAt,
+                                status = status,
+                                isPersistent = peer?.isPersistent ?: false,
+                                onClick = { onConversationClick(meta.conversationID) },
+                                onLongClick = { selectedMeta = meta }
+                            )
+                        }
                     }
                 }
             }
@@ -147,7 +155,9 @@ fun MainScreen(
             onNavigateToChat = { convID -> onConversationClick(convID) },
             onDismiss = {
                 showDiscovery = false
-                session.startDiscoveryCycle()
+                if (!isHibernating) {
+                    session.startDiscoveryCycle()
+                }
             }
         )
     }
@@ -235,7 +245,11 @@ fun ProfileBottomSheet(
     onDismiss: () -> Unit,
 ) {
     val sessionState by session.state.collectAsState()
-    val localUser = (sessionState as? ChatSession.SessionState.Ready)?.localUser ?: return
+    val localUser = when (val state = sessionState) {
+        is ChatSession.SessionState.Ready -> state.localUser
+        is ChatSession.SessionState.Hibernating -> state.localUser
+        else -> return
+    }
     val config by session.config.collectAsState()
     var newName by remember { mutableStateOf(localUser.userName) }
 
