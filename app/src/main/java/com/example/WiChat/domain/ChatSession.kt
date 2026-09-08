@@ -126,7 +126,13 @@ class ChatSession(
         configDAO.getConfig().onEach { entity ->
             entity?.let {
                 val oldConfig = _config.value
-                _config.value = AppConfig(it.notificationsEnabled, it.isInactiveMode, it.isAdvancedCleanupEnabled)
+                _config.value = AppConfig(
+                    it.notificationsEnabled,
+                    it.isInactiveMode,
+                    it.isAdvancedCleanupEnabled,
+                    it.biometricEnabled,
+                    it.lockTimeout,
+                )
                 if (it.isInactiveMode != oldConfig.isInactiveMode) {
                     if (it.isInactiveMode) hibernate() else wakeUp()
                 }
@@ -385,31 +391,30 @@ class ChatSession(
 
     fun toggleNotifications(enabled: Boolean) {
         scope.launch {
-            configDAO.saveConfig(ConfigEntity(
-                notificationsEnabled = enabled,
-                isInactiveMode = _config.value.isInactiveMode,
-                isAdvancedCleanupEnabled = _config.value.isAdvancedCleanupEnabled,
-            ))
+            configDAO.saveConfig(config.value.toEntity().copy(notificationsEnabled = enabled))
         }
     }
 
     fun toggleInactiveMode(enabled: Boolean) {
         scope.launch {
-            configDAO.saveConfig(ConfigEntity(
-                notificationsEnabled = _config.value.notificationsEnabled,
-                isInactiveMode = enabled,
-                isAdvancedCleanupEnabled = _config.value.isAdvancedCleanupEnabled,
-            ))
+            configDAO.saveConfig(config.value.toEntity().copy(isInactiveMode = enabled))
         }
     }
 
     fun toggleAdvancedCleanup(enabled: Boolean) {
         scope.launch {
-            configDAO.saveConfig(ConfigEntity(
-                notificationsEnabled = _config.value.notificationsEnabled,
-                isInactiveMode = _config.value.isInactiveMode,
-                isAdvancedCleanupEnabled = enabled,
-            ))
+            configDAO.saveConfig(config.value.toEntity().copy(isAdvancedCleanupEnabled = enabled))
+        }
+    }
+
+    fun toggleBiometric(enabled: Boolean) {
+        scope.launch {
+            configDAO.saveConfig(config.value.toEntity().copy(biometricEnabled = enabled))
+        }
+    }
+    fun updateLockTimeout(timeout: Long) {
+        scope.launch {
+            configDAO.saveConfig(config.value.toEntity().copy(lockTimeout = timeout))
         }
     }
 
@@ -427,4 +432,11 @@ class ChatSession(
 //    identity
     private fun UserEntity.toDomain() = User(userID, userName, createdAt, lastKnownDeviceAddress, isPersistent)
     private fun User.toEntity(isLocal: Boolean) = UserEntity(userID, userName, createdAt, lastKnownDeviceAddress, isLocal, isPersistent)
+    private fun AppConfig.toEntity() = ConfigEntity(
+        notificationsEnabled = notificationsEnabled,
+        isInactiveMode = isInactiveMode,
+        isAdvancedCleanupEnabled = isAdvancedCleanupEnabled,
+        biometricEnabled = biometricEnabled,
+        lockTimeout = lockTimeout,
+    )
 }

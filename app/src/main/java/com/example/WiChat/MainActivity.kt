@@ -8,10 +8,13 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,12 +30,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.example.WiChat.core.security.BiometricAuthHandler
+import com.example.WiChat.core.security.SecurityManager
 import com.example.WiChat.domain.ChatSession
 import com.example.WiChat.persistence.MessageDAO
 import com.example.WiChat.ui.screens.chat.ChatViewModel
@@ -41,19 +47,21 @@ import com.example.WiChat.ui.screens.chat.ChatScreen
 import com.example.WiChat.ui.screens.main.MainScreen
 import com.example.WiChat.ui.screens.welcome.WelcomeScreen
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private var chatService: ChatService? = null
     private var isBound = false
     private var serviceReady by mutableStateOf(false)
+//    biometrics
+    private lateinit var securityManager: SecurityManager
+    private var isUnlocked by mutableStateOf(false)
+    private var isAuthInProgress by mutableStateOf(false)
 
     private val connection = object : android.content.ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as ChatService.ChatServiceBinder
             chatService = binder.getService()
             isBound = true
-//            chatService?.chatSession?.start()
             serviceReady = true
-            checkAndRequestPermissions()
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             chatService = null
@@ -82,8 +90,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        securityManager = SecurityManager(this)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        splashScreen.setKeepOnScreenCondition { !serviceReady }
+
         Intent(this, ChatService::class.java).also { intent ->
             startService(intent)
             bindService(intent, connection, Context.BIND_AUTO_CREATE)
@@ -97,9 +109,25 @@ class MainActivity : ComponentActivity() {
                 ) {
                     if (serviceReady && chatService != null) {
                         val session = chatService!!.chatSession
-                        AppNavigation(session, session.getMessageDAO())
+                        val config by session.config.collectAsState()
+                        LaunchedEffect(config, serviceReady) {
+                            if (config.biometricEnabled) {
+                                if (!isUnlocked && !isAuthInProgress) {
+                                    checkBiometric(config.lockTimeout)
+                                }
+                            } else {
+                                isUnlocked = true
+                                checkAndRequestPermissions()
+                            }
+                        }
+                        if (isUnlocked) {
+                            AppNavigation(session, session.getMessageDAO())
+                        }
                     } else {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                            contentAlignment = Alignment.Center
+                        ) {
                             CircularProgressIndicator()
                         }
                     }
@@ -125,6 +153,31 @@ class MainActivity : ComponentActivity() {
             unbindService(connection)
             isBound = false
         }
+    }
+
+    private fun checkBiometric(timeout: Long) {
+        if (securityManager.isSessionValid(timeout)) {
+            isUnlocked = true
+            checkAndRequestPermissions()
+            return
+        }
+        if (isAuthInProgress) return
+        isAuthInProgress = true
+        val authHandler = BiometricAuthHandler(
+            activity = this,
+            onAuthSuccess = {
+                securityManager.updateUnlockTimestamp()
+                isUnlocked = true
+                isAuthInProgress = false
+                checkAndRequestPermissions()
+            },
+            onAuthError = { error ->
+                isAuthInProgress = false
+                Toast.makeText(this, "Authentication required: $error", Toast.LENGTH_SHORT).show()
+                finish()
+            }
+        )
+        authHandler.authenticate()
     }
 }
 

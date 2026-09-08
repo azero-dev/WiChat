@@ -14,6 +14,8 @@ data class ConfigEntity(
     val notificationsEnabled: Boolean,
     val isInactiveMode: Boolean,
     val isAdvancedCleanupEnabled: Boolean,
+    val biometricEnabled: Boolean = false,
+    val lockTimeout: Long = 60000L,
 )
 
 @Dao

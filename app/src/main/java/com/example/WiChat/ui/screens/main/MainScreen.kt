@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -312,6 +313,51 @@ fun ProfileBottomSheet(
                     onAdvanceCleanupClick()
                 } else {
                     session.toggleAdvancedCleanup(false)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text(
+                "Security",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(Modifier.height(8.dp))
+            ProfileToggle(
+                title = "Biometric lock",
+                subtitle = "Require authentication to open WiChat",
+                checked = config.biometricEnabled
+            ) {
+                session.toggleBiometric(it)
+            }
+            if (config.biometricEnabled) {
+                Spacer(Modifier.height(16.dp))
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Lock timeout", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Time before requiring authentication",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    val options = listOf(
+                        0L to "always",
+                        60000L to "1 minute",
+                        9000000L to "15 minutes",
+                        36000000L to "1h",
+                        86400000L to "24h",
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        options.forEach { (time, label) ->
+                            val isSelected = config.lockTimeout == time
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { session.updateLockTimeout(time) },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
                 }
             }
         }
