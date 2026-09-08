@@ -109,23 +109,24 @@ class MainActivity : FragmentActivity() {
                 ) {
                     if (serviceReady && chatService != null) {
                         val session = chatService!!.chatSession
-                        val config by session.config.collectAsState()
-                        LaunchedEffect(config, serviceReady) {
-                            if (config.biometricEnabled) {
-                                if (!isUnlocked && !isAuthInProgress) {
-                                    checkBiometric(config.lockTimeout)
-                                }
-                            } else {
-                                isUnlocked = true
-                                checkAndRequestPermissions()
+                        LaunchedEffect(serviceReady) {
+                            if (serviceReady && !isUnlocked) {
+                                checkBiometric(securityManager.getLockTimeout())
                             }
                         }
-                        if (isUnlocked) {
-                            AppNavigation(session, session.getMessageDAO())
+                        if (isUnlocked && session != null) {
+                            AppNavigation(session, session.getMessageDAO(), securityManager)
+                        } else {
+                            Box(
+                                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
                         }
                     } else {
                         Box(
-                            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                            Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator()
@@ -156,8 +157,11 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun checkBiometric(timeout: Long) {
+        if (isUnlocked || isAuthInProgress) return
         if (securityManager.isSessionValid(timeout)) {
             isUnlocked = true
+            val password = securityManager.getDatabasePassword()
+            chatService?.unlockDatabase(password)
             checkAndRequestPermissions()
             return
         }
@@ -169,6 +173,8 @@ class MainActivity : FragmentActivity() {
                 securityManager.updateUnlockTimestamp()
                 isUnlocked = true
                 isAuthInProgress = false
+                val password = securityManager.getDatabasePassword()
+                chatService?.unlockDatabase(password)
                 checkAndRequestPermissions()
             },
             onAuthError = { error ->
@@ -185,6 +191,7 @@ class MainActivity : FragmentActivity() {
 fun AppNavigation(
     session: ChatSession,
     messageDAO: MessageDAO,
+    securityManager: SecurityManager,
 ) {
     val navController = rememberNavController()
     val sessionState by session.state.collectAsState()
@@ -227,6 +234,9 @@ fun AppNavigation(
                 session = session,
                 onConversationClick = { convID ->
                     navController.navigate("chat/$convID")
+                },
+                onTimeoutChanged = { time ->
+                    securityManager.setLockTimeout(time)
                 }
             )
         }

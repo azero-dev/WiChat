@@ -215,6 +215,10 @@ class ChatSession(
         }
     }
 
+    fun processManualEvent(event: TransportEvent) {
+        scope.launch { onTransportEvent(event) }
+    }
+
     fun discoverPeers(): Flow<List<DiscoveredPeer>> {
         stopDiscoveryCycle()
         return transport.discoverPeers()
@@ -308,9 +312,9 @@ class ChatSession(
         }
     }
 
+//    Wifi Direct seems unstable while not in use
+//    this may help to keep connected
     private fun startHeartbeat() {
-//        Wifi Direct seems unstable while not in use
-//        this may help to keep connected
         heartbeat?.cancel()
         heartbeat = scope.launch {
             while (isActive) {

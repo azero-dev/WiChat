@@ -64,6 +64,7 @@ import java.util.Locale
 fun MainScreen(
     session: ChatSession,
     onConversationClick: (String) -> Unit,
+    onTimeoutChanged: (Long) -> Unit,
 ) {
     val conversations by session.getConversationMetas().collectAsState(initial = emptyList())
     val savedPeers by session.getSavedPeers().collectAsState()
@@ -168,6 +169,7 @@ fun MainScreen(
             session = session,
             onAdvanceCleanupClick = { showAdvancedCleanupDialog = true },
             onDismiss = { showProfile = false },
+            onTimeoutChanged = onTimeoutChanged
         )
     }
     selectedMeta?.let { meta ->
@@ -258,6 +260,7 @@ fun ProfileBottomSheet(
     session: ChatSession,
     onAdvanceCleanupClick: () -> Unit,
     onDismiss: () -> Unit,
+    onTimeoutChanged: (Long) -> Unit,
 ) {
     val sessionState by session.state.collectAsState()
     val localUser = when (val state = sessionState) {
@@ -353,7 +356,10 @@ fun ProfileBottomSheet(
                             val isSelected = config.lockTimeout == time
                             FilterChip(
                                 selected = isSelected,
-                                onClick = { session.updateLockTimeout(time) },
+                                onClick = {
+                                    session.updateLockTimeout(time)
+                                    onTimeoutChanged(time)
+                                          },
                                 label = { Text(label, style = MaterialTheme.typography.labelSmall) }
                             )
                         }
