@@ -15,9 +15,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -46,6 +51,7 @@ import com.example.WiChat.ui.theme.WiChatTheme
 import com.example.WiChat.ui.screens.chat.ChatScreen
 import com.example.WiChat.ui.screens.main.MainScreen
 import com.example.WiChat.ui.screens.welcome.WelcomeScreen
+import com.example.WiChat.ui.screens.PermissionDeniedScreen
 
 class MainActivity : FragmentActivity() {
     private var chatService: ChatService? = null
@@ -55,6 +61,7 @@ class MainActivity : FragmentActivity() {
     private lateinit var securityManager: SecurityManager
     private var isUnlocked by mutableStateOf(false)
     private var isAuthInProgress by mutableStateOf(false)
+    private var permissionsDenied by mutableStateOf(false)
 
     private val connection = object : android.content.ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -83,9 +90,10 @@ class MainActivity : FragmentActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         if (permissions.all { it.value }) {
-            chatService?.chatSession?.start()
+            permissionsDenied = false
+            chatService?.startChatProcessor()
         } else {
-            checkAndRequestPermissions()
+            permissionsDenied = true
         }
     }
 
@@ -115,7 +123,13 @@ class MainActivity : FragmentActivity() {
                             }
                         }
                         if (isUnlocked && session != null) {
-                            AppNavigation(session, session.getMessageDAO(), securityManager)
+                            if (permissionsDenied) {
+                                PermissionDeniedScreen(onRetry = {
+                                    checkAndRequestPermissions()
+                                })
+                            } else {
+                                AppNavigation(session, session.getMessageDAO(), securityManager)
+                            }
                         } else {
                             Box(
                                 Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -142,7 +156,8 @@ class MainActivity : FragmentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
-            chatService?.chatSession?.start()
+            permissionsDenied = false
+            chatService?.startChatProcessor()
         } else {
             permissionLauncher.launch(missing.toTypedArray())
         }

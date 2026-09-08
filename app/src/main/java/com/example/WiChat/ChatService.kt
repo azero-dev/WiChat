@@ -68,7 +68,6 @@ class ChatService : Service() {
                 scope = scope,
             )
             chatSession = session
-            session.start()
             isUnlocked = true
 //    process pending event after unlocking
             synchronized(pendingEvents) {
@@ -90,6 +89,12 @@ class ChatService : Service() {
                 }
             }
             .launchIn(scope)
+    }
+
+    fun startChatProcessor() {
+        if (isUnlocked && chatSession != null) {
+            chatSession?.start()
+        }
     }
 
     //    TODO: notifications doesn't work yet
