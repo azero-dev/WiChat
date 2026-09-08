@@ -114,7 +114,7 @@ fun MainScreen(
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 1.dp)
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                "Connecting...)",
+                                "Connecting...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -124,7 +124,7 @@ fun MainScreen(
                 if (conversations.isEmpty()) {
                     Box(Modifier.weight(1f).fillMaxWidth(),
                         contentAlignment = Alignment.Center) {
-                        Text("Tap on + to start a new one")
+                        Text("Tap on + to find new devices to connect to.")
                     }
                 } else {
                     LazyColumn(modifier = Modifier
@@ -207,7 +207,7 @@ fun MainScreen(
     }
     if (showAdvancedCleanupDialog) {
         ConfirmationDialog(
-            title = "Warning: Advanced fix",
+            title = "Warning: advanced fix",
             textBody = "This mode uses experimental features to clear Android Wifi cache. It may be used to fix reconnection issues, but it will delete ALL remembered Wifi Direct Persistent groups on your device.",
             onConfirm = {
                 session.toggleAdvancedCleanup(true)
@@ -280,7 +280,7 @@ fun ProfileBottomSheet(
             OutlinedTextField(
                 value = newName,
                 onValueChange = { newName = it },
-                label = { Text("Display name") },
+                label = { Text("User name") },
                 modifier = Modifier.fillMaxWidth(),
                 trailingIcon = {
                     if (newName != localUser.userName && newName.isNotBlank()) {
@@ -301,7 +301,7 @@ fun ProfileBottomSheet(
             Spacer(Modifier.height(16.dp))
             ProfileToggle(
                 "Inactive mode",
-                "Pause network activity",
+                "Pause WiChat and network activity",
                 config.isInactiveMode
             ) {
                 session.toggleInactiveMode(it)

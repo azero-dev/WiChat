@@ -31,7 +31,7 @@ class BiometricAuthHandler(
 
     fun authenticate() {
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Access WiChat")
+            .setTitle("WiChat")
             .setSubtitle("Authenticate to access WiChat")
             .setAllowedAuthenticators(
                 BiometricManager.Authenticators.BIOMETRIC_STRONG or

@@ -252,7 +252,7 @@ fun MessageOptionSheet(
         content = {
             transitInfo?.let {
                 InfoField("TTL", it.ttl.toString())
-                InfoField("Retry counter", it.retryCounter.toString())
+                InfoField("Retry counter", "${it.retryCounter.toString()}/10")
             }
         },
         actions = listOf(

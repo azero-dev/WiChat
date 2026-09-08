@@ -1,7 +1,7 @@
 package com.example.WiChat.core
 
 data class AppConfig(
-    val notificationsEnabled: Boolean = true,
+    val notificationsEnabled: Boolean = false,
     val isInactiveMode: Boolean = false,
     val isAdvancedCleanupEnabled: Boolean = false,
     val biometricEnabled: Boolean = false,
